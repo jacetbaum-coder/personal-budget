@@ -12,8 +12,8 @@ export interface RecurringExpenseTotals {
 
 export function isRecurringExpenseDue(expense: RecurringExpense, periodIndex: number): boolean {
   if (expense.active === false) return false
-  // periodIndex 0 = Jun 18 = 2nd paycheck of June, so add 1 before mod
-  const monthlyParity = (periodIndex + 1) % 2
+  // periodIndex 0 (Jun 18) is EVEN cycle in this app's budgeting flow.
+  const monthlyParity = periodIndex % 2
   switch (expense.frequency) {
     case 'Every paycheck':
       return true

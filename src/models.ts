@@ -29,6 +29,8 @@ export interface PayPeriod {
   label: string
   payDate: string
   payAmount: number
+  /** Optional per-account starting balances before paycheck lands for this period. */
+  startingBalances?: Record<AccountId, number>
   transfers: {
     rent: number
     openbank: number
