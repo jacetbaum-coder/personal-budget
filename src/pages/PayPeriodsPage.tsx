@@ -61,6 +61,10 @@ export default function PayPeriodsPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [newExp, setNewExp] = useState<Omit<RecurringExpense, 'id'>>(blankExpense(accounts))
 
+  // Funding source plans for expense edits
+  const [expFundingPlan, setExpFundingPlan] = useState<{ source: string | null; confirmed: boolean }>({ source: null, confirmed: false })
+  const [newExpFundingPlan, setNewExpFundingPlan] = useState<{ source: string | null; confirmed: boolean }>({ source: null, confirmed: false })
+
   const selectedPeriod = useMemo(
     () => payPeriods.find((period) => period.id === selectedPayPeriodId) ?? payPeriods[0],
     [payPeriods, selectedPayPeriodId]
@@ -119,8 +123,9 @@ export default function PayPeriodsPage() {
     setShowAdd(false)
     setEditingId(exp.id)
     setDraftExp({ ...exp })
+    setExpFundingPlan({ source: null, confirmed: false })
   }
-  const cancelEditExp = () => { setEditingId(null); setDraftExp(null) }
+  const cancelEditExp = () => { setEditingId(null); setDraftExp(null); setExpFundingPlan({ source: null, confirmed: false }) }
   const saveEditExp = () => {
     if (!draftExp) return
     setRecurringExpenses((curr: RecurringExpense[]) =>
@@ -135,10 +140,95 @@ export default function PayPeriodsPage() {
     if (!newExp.name.trim()) return
     setRecurringExpenses((curr: RecurringExpense[]) => [...curr, { id: Date.now(), ...newExp }])
     setNewExp(blankExpense(accounts))
+    setNewExpFundingPlan({ source: null, confirmed: false })
     setShowAdd(false)
   }
 
   const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? id
+
+  // ── Shared funding context (used by both edit and add pickers) ────────────
+  const fundingCtx = {
+    savingsBuffer: SAVINGS_BUFFER,
+    checkingBuffer: CHECKING_BUFFER,
+    spendingMoney: availableSpending,
+    openbankTransfer: selectedPeriod.transfers.openbank,
+    rentTransfer: selectedPeriod.transfers.rent,
+    periodIndex,
+  }
+
+  // Renders the funding source picker panel for a given delta + plan state
+  const renderFundingPicker = (
+    delta: number,
+    expSourceAccount: string,
+    plan: { source: string | null; confirmed: boolean },
+    setPlan: (p: { source: string | null; confirmed: boolean }) => void
+  ) => {
+    if (delta <= 0) return null
+    const options = getExpFundingSources(expSourceAccount, delta, fundingCtx)
+    return (
+      <div className="sm:col-span-2 rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+        <p className="text-xs font-semibold text-blue-900">
+          +${delta} added — where should this come from?
+          <span className="ml-1 font-normal text-blue-600">Pick a source below.</span>
+        </p>
+        <div className="space-y-1.5">
+          {options.map((opt) => {
+            const isSelected = plan.source === opt.id
+            const needsConfirm = isSelected && opt.requiresConfirm && !plan.confirmed
+            const isConfirmed = isSelected && (!opt.requiresConfirm || plan.confirmed)
+            return (
+              <div key={opt.id}>
+                <button
+                  type="button"
+                  onClick={() => setPlan({ source: opt.id, confirmed: false })}
+                  className={`w-full rounded-xl border p-2.5 text-left text-xs transition-all ${
+                    isSelected
+                      ? opt.warning ? 'border-red-300 bg-red-50' : 'border-emerald-300 bg-emerald-50'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`h-3 w-3 shrink-0 rounded-full border-2 ${
+                      isSelected
+                        ? opt.warning ? 'border-red-400 bg-red-400' : 'border-emerald-500 bg-emerald-500'
+                        : 'border-slate-300'
+                    }`} />
+                    <span className="font-semibold text-slate-900">{opt.label}</span>
+                    <span className="text-slate-400">${opt.current} available</span>
+                    {opt.recommended && !isSelected && (
+                      <span className="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">suggested</span>
+                    )}
+                  </div>
+                  <p className={`mt-1 pl-5 leading-snug ${opt.warning ? 'text-red-700' : 'text-slate-500'}`}>{opt.detail}</p>
+                </button>
+                {needsConfirm && (
+                  <div className="mt-1 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                    <p className="flex-1 text-xs text-red-800">
+                      {opt.id === 'rent'
+                        ? "This reduces rent coverage. Confirm you'll make up the shortfall separately."
+                        : `This takes ${opt.label} below zero. Confirm you're okay with this.`}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setPlan({ source: opt.id, confirmed: true })}
+                      className="shrink-0 rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700"
+                    >
+                      Confirm
+                    </button>
+                  </div>
+                )}
+                {isConfirmed && (
+                  <p className="mt-1 pl-2 text-xs font-medium text-emerald-700">
+                    ✓ Funding from {opt.label} — ${opt.current} → ${opt.after} after this expense.
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   // ── CashApp adjustment: per-source consequence ────────────────────────────
   const getCashAppSourceConsequence = (sourceId: string, delta: number): { text: string; warning: boolean; requiresConfirm: boolean } => {
@@ -220,6 +310,119 @@ export default function PayPeriodsPage() {
   // ── Account group order: savings → rent → checking (↳ cashApp ↳ spending) → openbank
   const GROUP_ORDER = ['savings', 'rentFund', 'checking', 'openbank'] as const
 
+// ── Expense funding source helpers ─────────────────────────────────────────
+interface ExpFundingOption {
+  id: string
+  label: string
+  current: number
+  after: number
+  recommended: boolean
+  warning: boolean
+  requiresConfirm: boolean
+  detail: string
+}
+
+function getExpFundingSources(
+  expSourceAccount: string,
+  delta: number,
+  ctx: {
+    savingsBuffer: number
+    checkingBuffer: number
+    spendingMoney: number
+    openbankTransfer: number
+    rentTransfer: number
+    periodIndex: number
+  }
+): ExpFundingOption[] {
+  const { savingsBuffer, checkingBuffer, spendingMoney, openbankTransfer, rentTransfer, periodIndex } = ctx
+
+  const savingsAfter = savingsBuffer - delta
+  const checkingAfter = checkingBuffer - delta
+  const spendingAfter = spendingMoney - delta
+  const openbankAfter = openbankTransfer - delta
+
+  const isFirstPeriod = periodIndex % 2 === 0
+  const rentThreshold = isFirstPeriod ? 600 : 1200
+  const newRentTransfer = rentTransfer - delta
+  const rentCumulative = isFirstPeriod ? newRentTransfer : 600 + newRentTransfer
+  const rentWarn = rentCumulative < rentThreshold
+  const rentShortfall = Math.max(0, rentThreshold - rentCumulative)
+
+  const rawOptions: Omit<ExpFundingOption, 'recommended'>[] = [
+    {
+      id: 'savings-buffer',
+      label: 'BofA Savings buffer',
+      current: savingsBuffer,
+      after: savingsAfter,
+      warning: savingsAfter < 0,
+      requiresConfirm: savingsAfter < 0,
+      detail: savingsAfter >= 0
+        ? `Buffer: $${savingsBuffer} → $${savingsAfter} remaining`
+        : `Buffer would go $${Math.abs(savingsAfter)} negative`,
+    },
+    {
+      id: 'spending',
+      label: 'Spending money',
+      current: spendingMoney,
+      after: spendingAfter,
+      warning: spendingAfter < 0,
+      requiresConfirm: spendingAfter < 0,
+      detail: spendingAfter >= 0
+        ? `Available: $${spendingMoney} → $${spendingAfter} this period`
+        : `Would overspend by $${Math.abs(spendingAfter)}`,
+    },
+    {
+      id: 'checking-buffer',
+      label: 'BofA Checkings buffer',
+      current: checkingBuffer,
+      after: checkingAfter,
+      warning: checkingAfter < 0,
+      requiresConfirm: checkingAfter < 0,
+      detail: checkingAfter >= 0
+        ? `Buffer: $${checkingBuffer} → $${checkingAfter} remaining`
+        : `Buffer would go $${Math.abs(checkingAfter)} negative`,
+    },
+    {
+      id: 'openbank',
+      label: 'OpenBank savings',
+      current: openbankTransfer,
+      after: openbankAfter,
+      warning: openbankAfter < 0,
+      requiresConfirm: true, // always confirm touching openbank
+      detail: openbankAfter >= 0
+        ? `OpenBank transfer: $${openbankTransfer} → $${openbankAfter} this period`
+        : `Would need $${Math.abs(openbankAfter)} directly from OpenBank`,
+    },
+    {
+      id: 'rent',
+      label: 'Rent money',
+      current: rentTransfer,
+      after: newRentTransfer,
+      warning: rentWarn,
+      requiresConfirm: true,
+      detail: rentWarn
+        ? `Rent fund: $${rentCumulative}/$${rentThreshold} — you'd need to add $${rentShortfall} to BofA Rent Holdings separately`
+        : `Rent transfer: $${rentTransfer} → $${newRentTransfer} (rent still covered)`,
+    },
+  ]
+
+  // Smart ordering by expense source account
+  let order: string[]
+  if (expSourceAccount === 'savings') {
+    order = ['savings-buffer', 'spending', 'checking-buffer', 'openbank', 'rent']
+  } else if (expSourceAccount === 'checking' || expSourceAccount === 'cashApp') {
+    order = ['spending', 'checking-buffer', 'savings-buffer', 'openbank', 'rent']
+  } else {
+    order = ['spending', 'savings-buffer', 'checking-buffer', 'openbank', 'rent']
+  }
+
+  const sorted = order.map((id) => rawOptions.find((o) => o.id === id)!).filter(Boolean)
+
+  // First non-warning option is recommended
+  const firstSafeIdx = sorted.findIndex((o) => !o.warning)
+  return sorted.map((o, i) => ({ ...o, recommended: i === firstSafeIdx }))
+}
+
 const FUNDING_SOURCE_OPTIONS = [
   { id: 'savings',  label: 'BofA Savings' },
   { id: 'checking', label: 'BofA Checkings' },
@@ -232,6 +435,8 @@ const FUNDING_SOURCE_OPTIONS = [
   const renderExpRow = (expense: RecurringExpense) => {
     const due = isRecurringExpenseDue(expense, periodIndex)
     if (editingId === expense.id && draftExp) {
+      const origAmount = recurringExpenses.find((e) => e.id === expense.id)?.amount ?? 0
+      const editDelta = draftExp.amount - origAmount
       return (
         <div key={expense.id} className="rounded-2xl border border-slate-300 bg-slate-50 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -243,7 +448,10 @@ const FUNDING_SOURCE_OPTIONS = [
             <div>
               <label className="mb-1 block text-xs text-slate-500">Amount ($)</label>
               <input type="number" className={inputCls} value={draftExp.amount}
-                onChange={(e) => setDraftExp((p) => p ? { ...p, amount: Number(e.target.value) } : p)} />
+                onChange={(e) => {
+                  setDraftExp((p) => p ? { ...p, amount: Number(e.target.value) } : p)
+                  setExpFundingPlan({ source: null, confirmed: false })
+                }} />
             </div>
             <div>
               <label className="mb-1 block text-xs text-slate-500">Frequency</label>
@@ -252,6 +460,8 @@ const FUNDING_SOURCE_OPTIONS = [
                 {FREQ_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
+            {/* Funding picker — appears when amount increased */}
+            {renderFundingPicker(editDelta, draftExp.sourceAccount, expFundingPlan, setExpFundingPlan)}
             <div>
               <label className="mb-1 block text-xs text-slate-500">Account</label>
               <select className={selCls} value={draftExp.sourceAccount}
@@ -595,7 +805,10 @@ const FUNDING_SOURCE_OPTIONS = [
                   <div>
                     <label className="mb-1 block text-xs text-slate-500">Amount ($)</label>
                     <input type="number" className={inputCls} value={newExp.amount}
-                      onChange={(e) => setNewExp((p) => ({ ...p, amount: Number(e.target.value) }))} />
+                      onChange={(e) => {
+                        setNewExp((p) => ({ ...p, amount: Number(e.target.value) }))
+                        setNewExpFundingPlan({ source: null, confirmed: false })
+                      }} />
                   </div>
                   <div>
                     <label className="mb-1 block text-xs text-slate-500">Frequency</label>
@@ -604,10 +817,15 @@ const FUNDING_SOURCE_OPTIONS = [
                       {FREQ_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
                     </select>
                   </div>
+                  {/* Funding picker for new expense */}
+                  {renderFundingPicker(newExp.amount, newExp.sourceAccount, newExpFundingPlan, setNewExpFundingPlan)}
                   <div>
                     <label className="mb-1 block text-xs text-slate-500">Account</label>
                     <select className={selCls} value={newExp.sourceAccount}
-                      onChange={(e) => setNewExp((p) => ({ ...p, sourceAccount: e.target.value }))}>
+                      onChange={(e) => {
+                        setNewExp((p) => ({ ...p, sourceAccount: e.target.value }))
+                        setNewExpFundingPlan({ source: null, confirmed: false })
+                      }}>
                       {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                   </div>
@@ -629,7 +847,7 @@ const FUNDING_SOURCE_OPTIONS = [
                     className="rounded-full bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-800">
                     Add expense
                   </button>
-                  <button onClick={() => setShowAdd(false)}
+                  <button onClick={() => { setShowAdd(false); setNewExpFundingPlan({ source: null, confirmed: false }) }}
                     className="rounded-full border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
                     Cancel
                   </button>
