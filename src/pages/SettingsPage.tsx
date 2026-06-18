@@ -88,11 +88,13 @@ function getPaydayHighlights(baseDate: string, periodType: string) {
 export default function SettingsPage() {
   const {
     defaultPayPeriodLabel,
+    defaultPaycheckAmount,
     currency,
     selectedPayDate,
     forecastHorizon,
     notifications,
     setDefaultPayPeriodLabel,
+    setDefaultPaycheckAmount,
     setSelectedPayDate,
     setForecastHorizon,
     setNotifications
@@ -103,6 +105,7 @@ export default function SettingsPage() {
   const [draftPayDate, setDraftPayDate] = useState(selectedPayDate)
   const [draftHorizon, setDraftHorizon] = useState(forecastHorizon)
   const [draftNotifications, setDraftNotifications] = useState(notifications)
+  const [draftPaycheckAmount, setDraftPaycheckAmount] = useState<number>(defaultPaycheckAmount)
 
   const monthGrid = useMemo(() => buildMonthGrid(draftPayDate), [draftPayDate])
   const highlightedDates = useMemo(() => getPaydayHighlights(draftPayDate, draftPayPeriod), [draftPayDate, draftPayPeriod])
@@ -112,6 +115,7 @@ export default function SettingsPage() {
     setDraftPayDate(selectedPayDate)
     setDraftHorizon(forecastHorizon)
     setDraftNotifications(notifications)
+    setDraftPaycheckAmount(defaultPaycheckAmount)
     setEditMode(true)
   }
 
@@ -124,6 +128,7 @@ export default function SettingsPage() {
     setSelectedPayDate(draftPayDate)
     setForecastHorizon(draftHorizon)
     setNotifications(draftNotifications)
+    setDefaultPaycheckAmount(Number(draftPaycheckAmount || 0))
     setEditMode(false)
   }
 
@@ -202,6 +207,20 @@ export default function SettingsPage() {
                 <label className="block">
                   <span className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Currency</span>
                   <div className="mt-2 rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-900">USD</div>
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Paycheck amount</span>
+                  {editMode ? (
+                    <input
+                      type="number"
+                      value={draftPaycheckAmount}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => setDraftPaycheckAmount(Number(e.target.value))}
+                      className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none"
+                    />
+                  ) : (
+                    <p className="mt-2 text-base font-semibold text-slate-900">${defaultPaycheckAmount.toLocaleString()}</p>
+                  )}
                 </label>
 
                 <label className="block">

@@ -1,11 +1,14 @@
+import React from 'react'
 import Card from '../components/Card'
 import InfoRow from '../components/InfoRow'
 import Section from '../components/Section'
+import Sparkline from '../components/Sparkline'
 import { useAppState } from '../state'
 
 export default function DashboardPage() {
   const {
     accounts,
+    forecastPoints,
     payPeriods,
     selectedPayPeriodId,
     dashboardHeading,
@@ -25,6 +28,36 @@ export default function DashboardPage() {
   const safetyBuffer = getSafetyBuffer(projectedLeftover)
   const availableSpending = getAvailableSpending(projectedLeftover)
 
+  const sortedForecast = (forecastPoints ?? []).slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+  // helper to build cumulative series for a given account id
+  const buildSeriesFor = (accountId?: string) => {
+    if (!sortedForecast.length) return [] as number[]
+    if (accountId === 'total' || !accountId) {
+      // sum across accounts
+      const starting = accounts.reduce((s, a) => s + a.balance, 0)
+      let cur = starting
+      return sortedForecast.map((p) => {
+        const delta = Object.values(p.balanceAdjustments ?? {}).reduce((s, v) => s + (v ?? 0), 0)
+        cur = cur + delta
+        return cur
+      })
+    }
+
+    const acct = accounts.find((a) => a.id === accountId)
+    const starting = acct?.balance ?? 0
+    let cur = starting
+    return sortedForecast.map((p) => {
+      const delta = (p.balanceAdjustments as any)?.[accountId] ?? 0
+      cur = cur + delta
+      return cur
+    })
+  }
+
+  const [seriesTarget, setSeriesTarget] = React.useState<string | 'total'>('checking')
+  const checkingSeries = buildSeriesFor(seriesTarget)
+  const labels = sortedForecast.map((p) => p.dateLabel)
+
   return (
     <div className="space-y-6">
       <Section title="Dashboard" description="A calmer dashboard with just the most useful information for your next paycheck.">
@@ -33,7 +66,7 @@ export default function DashboardPage() {
             <div className="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/40">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-2xl font-semibold text-slate-950">{dashboardHeading}</h2>
+                  <h2 className="text-2xl font-semibold text-slate-950">Cashflow overview</h2>
                   <p className="mt-2 max-w-2xl text-sm text-slate-500">
                     This page shows the single most important numbers for your upcoming pay period: how much you can safely spend and what is already committed.
                   </p>
@@ -44,29 +77,56 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-          <Card title="Available to Spend" subtitle="A simplified view of how much is left after pay period commitments." className="xl:col-span-1">
-            <div className="rounded-[2rem] bg-slate-100 p-8 text-slate-900 shadow-sm shadow-slate-200/40">
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Available Spending</p>
-              <p className="mt-4 text-4xl font-semibold tracking-tight">${availableSpending.toLocaleString()}</p>
-              <p className="mt-2 text-sm text-slate-600">This is the amount you should feel comfortable spending before your next paycheck arrives.</p>
-              <div className="mt-8 grid gap-4 sm:grid-cols-2">
-                <div className="rounded-3xl bg-white p-5 shadow-sm shadow-slate-200/40">
-                  <p className="text-sm text-slate-500">Days until next paycheck</p>
-                  <p className="mt-3 text-2xl font-semibold">5</p>
+          <Card title="Current Spend" subtitle="This month" className="xl:col-span-1">
+            <div className="rounded-lg bg-slate-50 p-4 text-slate-900 shadow-sm shadow-slate-200/30">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Current spend</p>
+                  <p className="mt-2 text-3xl font-semibold">${availableSpending.toLocaleString()}</p>
+                  <p className="mt-1 text-xs text-slate-500">{dashboardButtonText}</p>
                 </div>
-                <div className="rounded-3xl bg-white p-5 shadow-sm shadow-slate-200/40">
-                  <p className="text-sm text-slate-500">Reserved for recurring commitments</p>
-                  <p className="mt-3 text-2xl font-semibold">${safetyBuffer.toLocaleString()}</p>
+                <div className="text-right flex items-center gap-2">
+                  <select
+                    value={seriesTarget}
+                    onChange={(e) => setSeriesTarget(e.target.value as any)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs"
+                  >
+                    <option value="checking">Checking</option>
+                    <option value="savings">Savings</option>
+                    <option value="openbank">Openbank</option>
+                    <option value="rentFund">Rent Fund</option>
+                    <option value="cashApp">CashApp</option>
+                    <option value="total">Total</option>
+                  </select>
+                  <div className="rounded-full bg-slate-900/10 px-3 py-1 text-xs font-medium text-slate-900">Payday in 5 days</div>
+                </div>
+              </div>
+
+              <div className="mt-4 h-20 w-full rounded-lg">
+                <Sparkline data={checkingSeries} />
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md bg-white p-3 shadow-sm">
+                  <p className="text-xs text-slate-500">Reserved</p>
+                  <p className="mt-1 text-lg font-semibold">${safetyBuffer.toLocaleString()}</p>
+                </div>
+                <div className="rounded-md bg-white p-3 shadow-sm">
+                  <p className="text-xs text-slate-500">Available</p>
+                  <p className="mt-1 text-lg font-semibold">${availableSpending.toLocaleString()}</p>
                 </div>
               </div>
             </div>
           </Card>
 
           <div className="space-y-6">
-            <Card title="Current Snapshot" subtitle="Live balance overview for primary accounts.">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <Card title="Accounts" subtitle="Live balances">
+              <div className="space-y-2 text-sm text-slate-700">
                 {accounts.map((account) => (
-                  <InfoRow key={account.id} label={account.name} value={`$${account.balance.toLocaleString()}`} />
+                  <div key={account.id} className="flex items-center justify-between rounded-md bg-slate-50 p-3">
+                    <div className="text-sm text-slate-700">{account.name}</div>
+                    <div className="text-sm font-semibold text-slate-900">${account.balance.toLocaleString()}</div>
+                  </div>
                 ))}
               </div>
             </Card>

@@ -30,6 +30,7 @@ export interface AppState {
   dashboardHeading: string
   dashboardButtonText: string
   defaultPayPeriodLabel: string
+  defaultPaycheckAmount: number
   currency: string
   selectedPayDate: string
   forecastHorizon: number
@@ -46,6 +47,7 @@ export interface AppState {
   setDashboardHeading: (heading: string) => void
   setDashboardButtonText: (text: string) => void
   setDefaultPayPeriodLabel: (label: string) => void
+  setDefaultPaycheckAmount: (amount: number) => void
   setCurrency: (currency: string) => void
   setForecastHorizon: (horizon: number) => void
   setNotifications: (notifications: { email: boolean; push: boolean }) => void
@@ -72,6 +74,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [dashboardHeading, setDashboardHeading] = useState<string>('Your future cashflow at a glance')
   const [dashboardButtonText, setDashboardButtonText] = useState<string>('New allocation')
   const [defaultPayPeriodLabel, setDefaultPayPeriodLabel] = useState<string>('Biweekly')
+  const [defaultPaycheckAmount, setDefaultPaycheckAmount] = useState<number>(samplePayPeriods[0]?.payAmount ?? 0)
   const [currency, setCurrency] = useState<string>('USD')
   const [selectedPayDate, setSelectedPayDate] = useState<string>('2026-06-28')
   const [forecastHorizon, setForecastHorizon] = useState<number>(30)
@@ -128,6 +131,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       dashboardHeading,
       dashboardButtonText,
       defaultPayPeriodLabel,
+      defaultPaycheckAmount,
       currency,
       selectedPayDate,
       forecastHorizon,
@@ -144,6 +148,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setDashboardHeading,
       setDashboardButtonText,
       setDefaultPayPeriodLabel,
+      setDefaultPaycheckAmount,
       setCurrency,
       setForecastHorizon,
       setNotifications,
