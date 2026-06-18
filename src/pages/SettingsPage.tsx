@@ -111,7 +111,6 @@ export default function SettingsPage() {
     setSelectedPayDate,
     setForecastHorizon,
     setNotifications,
-    syncNow,
     exportBackup,
     importBackup,
     resetToDefaults
@@ -353,7 +352,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-6">
-            <Card title="Saved data" subtitle="Keep your budgeting changes across refreshes and deployments.">
+            <Card title="Saved data" subtitle="Your budgeting changes auto-sync in the background.">
               <div className="space-y-4 text-sm text-slate-600">
                 <div className={`rounded-2xl border px-4 py-3 ${saveStatusTone}`}>
                   <p className="text-sm font-semibold">{saveStatusLabel}</p>
@@ -364,13 +363,6 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="grid gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void syncNow()}
-                    className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                  >
-                    Sync now
-                  </button>
                   <button
                     type="button"
                     onClick={handleExportBackup}
