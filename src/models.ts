@@ -1,4 +1,5 @@
-export type AccountId = 'checking' | 'savings' | 'openbank' | 'rentFund' | 'cashApp'
+// AccountId is a plain string so users can add custom accounts at runtime.
+export type AccountId = string
 
 export interface Account {
   id: AccountId
@@ -22,11 +23,25 @@ export type RecurringFrequency = 'Every paycheck' | 'Every other paycheck' | 'Mo
 export type ExpenseCategory =
   | 'creditCards'
   | 'insurance'
-  | 'spotify'
-  | 'amazon'
-  | 'other'
+  | 'utilities'
+  | 'subscription'
+  | 'advisor'
   | 'groceries'
   | 'bus'
+  | 'studentLoans'
+  | 'other'
+
+export const expenseCategoryLabels: Record<ExpenseCategory, string> = {
+  creditCards:  'Credit Card',
+  insurance:    'Insurance',
+  utilities:    'Utilities',
+  subscription: 'Subscription',
+  advisor:      'Advisor / Service',
+  groceries:    'Groceries',
+  bus:          'Bus / Transit',
+  studentLoans: 'Student Loans',
+  other:        'Other',
+}
 
 export interface RecurringExpense {
   id: number
@@ -34,6 +49,10 @@ export interface RecurringExpense {
   amount: number
   frequency: RecurringFrequency
   category: ExpenseCategory
+  /** Which account this expense draws from. */
+  sourceAccount: AccountId
+  /** 0 = even-indexed periods (default), 1 = odd-indexed periods. */
+  cycleOffset?: number
   customInterval?: number
 }
 
@@ -88,60 +107,49 @@ export interface ForecastPoint {
   dateLabel: string
   date: string
   payPeriodId: number
-  balanceAdjustments: Partial<Record<AccountId, number>>
+  balanceAdjustments: Record<string, number>
 }
 
+// ── Actual data ───────────────────────────────────────────────────────────────
+
 export const sampleAccounts: Account[] = [
-  { id: 'checking', name: 'Checking', balance: 4120 },
-  { id: 'savings', name: 'Savings', balance: 5800 },
-  { id: 'openbank', name: 'Openbank', balance: 860 },
-  { id: 'rentFund', name: 'Rent Fund', balance: 1950 },
-  { id: 'cashApp', name: 'CashApp', balance: 320 }
+  { id: 'savings',  name: 'BofA Savings',       balance: 1200 },
+  { id: 'rentFund', name: 'BofA Rent Holdings',  balance: 600  },
+  { id: 'openbank', name: 'OpenBank',             balance: 2268 },
+  { id: 'checking', name: 'BofA Checkings',       balance: 310  },
+  { id: 'cashApp',  name: 'CashApp',              balance: 45   },
 ]
 
+// Active periods Jun 18 → Sep 11, 2026.
+// Index 0 (Jun 18) = EVEN cycle: Quicksilver, Amazon, Stupid pets52, Pet Insurance.
+// Index 1 (Jul 3)  = ODD  cycle: VentureOne, Utilities, Planet Fitness, Spotify.
 export const samplePayPeriods: PayPeriod[] = [
-  { id: 1, label: 'Jun 24 – Jul 7', payDate: 'Jun 28', payAmount: 3450, transfers: { rent: 1100, openbank: 420 } },
-  { id: 2, label: 'Jul 8 – Jul 21', payDate: 'Jul 12', payAmount: 3450, transfers: { rent: 1100, openbank: 450 } },
-  { id: 3, label: 'Jul 22 – Aug 4', payDate: 'Jul 26', payAmount: 3450, transfers: { rent: 1100, openbank: 430 } }
+  { id: 1, label: 'Jun 18', payDate: '2026-06-18', payAmount: 1454, transfers: { rent: 600, openbank: 200 } },
+  { id: 2, label: 'Jul 3',  payDate: '2026-07-03', payAmount: 1454, transfers: { rent: 600, openbank: 200 } },
+  { id: 3, label: 'Jul 17', payDate: '2026-07-17', payAmount: 1454, transfers: { rent: 600, openbank: 200 } },
+  { id: 4, label: 'Jul 31', payDate: '2026-07-31', payAmount: 1454, transfers: { rent: 600, openbank: 200 } },
+  { id: 5, label: 'Aug 14', payDate: '2026-08-14', payAmount: 1454, transfers: { rent: 600, openbank: 200 } },
+  { id: 6, label: 'Aug 28', payDate: '2026-08-28', payAmount: 1454, transfers: { rent: 600, openbank: 200 } },
+  { id: 7, label: 'Sep 11', payDate: '2026-09-11', payAmount: 1555, transfers: { rent: 600, openbank: 200 } },
 ]
 
 export const sampleRecurringExpenses: RecurringExpense[] = [
-  { id: 1, name: 'Credit Card Payment', amount: 285, frequency: 'Every paycheck', category: 'creditCards' },
-  { id: 2, name: 'Insurance', amount: 90, frequency: 'Every other paycheck', category: 'insurance' },
-  { id: 3, name: 'Spotify', amount: 15, frequency: 'Monthly', category: 'spotify' },
-  { id: 4, name: 'Amazon', amount: 22, frequency: 'Monthly', category: 'amazon' },
-  { id: 5, name: 'Groceries', amount: 235, frequency: 'Every paycheck', category: 'groceries' },
-  { id: 6, name: 'Bus', amount: 62, frequency: 'Every paycheck', category: 'bus' },
-  { id: 7, name: 'Gym membership', amount: 48, frequency: 'Custom', category: 'other', customInterval: 3 }
+  // ── From BofA Savings ────────────────────────────────────────────────────
+  { id: 1,  name: 'Quicksilver',       amount: 100,   frequency: 'Every other paycheck', category: 'creditCards',  sourceAccount: 'savings',  cycleOffset: 0 },
+  { id: 2,  name: 'Utilities',         amount: 130,   frequency: 'Every other paycheck', category: 'utilities',    sourceAccount: 'savings',  cycleOffset: 1 },
+  { id: 3,  name: 'Stupid pets52',     amount: 5.99,  frequency: 'Every other paycheck', category: 'subscription', sourceAccount: 'savings',  cycleOffset: 0 },
+  { id: 4,  name: 'Pet Insurance',     amount: 25.07, frequency: 'Every other paycheck', category: 'insurance',    sourceAccount: 'savings',  cycleOffset: 0 },
+  { id: 5,  name: 'Chris Lex Advisor', amount: 25,    frequency: 'Every paycheck',       category: 'advisor',      sourceAccount: 'savings'                   },
+  { id: 6,  name: 'VentureOne',        amount: 115,   frequency: 'Every other paycheck', category: 'creditCards',  sourceAccount: 'savings',  cycleOffset: 1 },
+  { id: 7,  name: 'Student Loans',     amount: 0,     frequency: 'Every paycheck',       category: 'studentLoans', sourceAccount: 'savings'                   },
+  // ── From BofA Checkings ──────────────────────────────────────────────────
+  { id: 8,  name: 'Planet Fitness',    amount: 16,    frequency: 'Every other paycheck', category: 'subscription', sourceAccount: 'checking', cycleOffset: 1 },
+  { id: 9,  name: 'Spotify',           amount: 13,    frequency: 'Every other paycheck', category: 'subscription', sourceAccount: 'checking', cycleOffset: 1 },
+  { id: 10, name: 'Amazon',            amount: 16,    frequency: 'Every other paycheck', category: 'subscription', sourceAccount: 'checking', cycleOffset: 0 },
+  { id: 11, name: 'Google Pay',        amount: 0,     frequency: 'Every paycheck',       category: 'other',        sourceAccount: 'checking'                  },
+  // ── Via CashApp (loaded from Checkings) ──────────────────────────────────
+  { id: 12, name: 'Groceries',         amount: 70,    frequency: 'Every paycheck',       category: 'groceries',    sourceAccount: 'cashApp'                   },
+  { id: 13, name: 'Bus',               amount: 25,    frequency: 'Every paycheck',       category: 'bus',          sourceAccount: 'cashApp'                   },
 ]
 
-export const sampleForecastPoints: ForecastPoint[] = [
-  {
-    id: 1,
-    dateLabel: 'Jun 19',
-    date: '2026-06-19',
-    payPeriodId: 1,
-    balanceAdjustments: { checking: -120, savings: 120, rentFund: 100, openbank: 0, cashApp: 20 }
-  },
-  {
-    id: 2,
-    dateLabel: 'Jul 3',
-    date: '2026-07-03',
-    payPeriodId: 1,
-    balanceAdjustments: { checking: 200, savings: 80, rentFund: 30, openbank: 40, cashApp: 10 }
-  },
-  {
-    id: 3,
-    dateLabel: 'Jul 17',
-    date: '2026-07-17',
-    payPeriodId: 2,
-    balanceAdjustments: { checking: -100, savings: 150, rentFund: 70, openbank: 20, cashApp: -10 }
-  },
-  {
-    id: 4,
-    dateLabel: 'Jul 31',
-    date: '2026-07-31',
-    payPeriodId: 3,
-    balanceAdjustments: { checking: 220, savings: 170, rentFund: 70, openbank: 40, cashApp: 10 }
-  }
-]
+export const sampleForecastPoints: ForecastPoint[] = []

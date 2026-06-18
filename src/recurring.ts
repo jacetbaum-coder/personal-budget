@@ -1,76 +1,47 @@
-import type { ExpenseCategory, RecurringExpense, RecurringFrequency } from './models'
+import type { RecurringExpense, RecurringFrequency } from './models'
 
 export type { RecurringFrequency }
 
 export interface RecurringExpenseTotals {
-  creditCards: number
-  insurance: number
-  spotify: number
-  amazon: number
+  fromSavings: number
+  fromChecking: number
+  fromCashApp: number
   groceries: number
   bus: number
-  other: number
 }
 
-export function isRecurringExpenseDue(expense: RecurringExpense, periodIndex: number) {
-  if (expense.frequency === 'Every paycheck') {
-    return true
+export function isRecurringExpenseDue(expense: RecurringExpense, periodIndex: number): boolean {
+  switch (expense.frequency) {
+    case 'Every paycheck':
+      return true
+    case 'Every other paycheck':
+    case 'Monthly': {
+      const offset = expense.cycleOffset ?? 0
+      return (periodIndex + offset) % 2 === 0
+    }
+    case 'Custom':
+      return expense.customInterval != null ? periodIndex % expense.customInterval === 0 : false
+    default:
+      return false
   }
-
-  if (expense.frequency === 'Every other paycheck') {
-    return periodIndex % 2 === 0
-  }
-
-  if (expense.frequency === 'Monthly') {
-    return periodIndex % 2 === 0
-  }
-
-  if (expense.frequency === 'Custom') {
-    return expense.customInterval ? periodIndex % expense.customInterval === 0 : false
-  }
-
-  return false
 }
 
 export function getRecurringExpenseTotals(expenses: RecurringExpense[], periodIndex: number): RecurringExpenseTotals {
-  return expenses.reduce<RecurringExpenseTotals>((totals, expense) => {
-    if (!isRecurringExpenseDue(expense, periodIndex)) {
-      return totals
+  const totals: RecurringExpenseTotals = { fromSavings: 0, fromChecking: 0, fromCashApp: 0, groceries: 0, bus: 0 }
+  for (const expense of expenses) {
+    if (!isRecurringExpenseDue(expense, periodIndex)) continue
+    const src = expense.sourceAccount ?? 'savings'
+    if (src === 'savings') {
+      totals.fromSavings += expense.amount
+    } else if (src === 'checking') {
+      totals.fromChecking += expense.amount
+    } else if (src === 'cashApp') {
+      totals.fromCashApp += expense.amount
+      if (expense.category === 'groceries') totals.groceries += expense.amount
+      if (expense.category === 'bus') totals.bus += expense.amount
     }
-
-    switch (expense.category) {
-      case 'creditCards':
-        totals.creditCards += expense.amount
-        break
-      case 'insurance':
-        totals.insurance += expense.amount
-        break
-      case 'spotify':
-        totals.spotify += expense.amount
-        break
-      case 'amazon':
-        totals.amazon += expense.amount
-        break
-      case 'groceries':
-        totals.groceries += expense.amount
-        break
-      case 'bus':
-        totals.bus += expense.amount
-        break
-      default:
-        totals.other += expense.amount
-    }
-
-    return totals
-  }, {
-    creditCards: 0,
-    insurance: 0,
-    spotify: 0,
-    amazon: 0,
-    groceries: 0,
-    bus: 0,
-    other: 0
-  })
+  }
+  return totals
 }
 
 export interface RecurringExpenseOccurrence {
@@ -84,19 +55,14 @@ export function getUpcomingOccurrences(
   count: number
 ): RecurringExpenseOccurrence[] {
   const occurrences: RecurringExpenseOccurrence[] = []
-  let currentIndex = startPeriodIndex
-
-  while (occurrences.length < count) {
-    expenses.forEach((expense) => {
-      if (isRecurringExpenseDue(expense, currentIndex)) {
-        occurrences.push({ expense, periodIndex: currentIndex })
+  let i = startPeriodIndex
+  while (occurrences.length < count && i <= startPeriodIndex + 20) {
+    for (const expense of expenses) {
+      if (isRecurringExpenseDue(expense, i)) {
+        occurrences.push({ expense, periodIndex: i })
       }
-    })
-    currentIndex += 1
-    if (currentIndex > startPeriodIndex + 20) {
-      break
     }
+    i++
   }
-
   return occurrences.slice(0, count)
 }

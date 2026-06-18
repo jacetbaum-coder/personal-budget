@@ -108,14 +108,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       payPeriod.payAmount,
       payPeriod.transfers.rent,
       payPeriod.transfers.openbank,
-      totals.creditCards,
-      totals.spotify + totals.amazon + totals.other,
-      totals.insurance
+      totals.fromSavings
     )
 
   const getSafetyBuffer = (leftover: number) => calculateSafetyBuffer(leftover)
   const getAvailableSpending = (leftover: number) => calculateAvailableSpending(leftover, calculateSafetyBuffer(leftover))
-  const getCashAppTransfer = (totals: ReturnType<typeof getRecurringExpenseTotals>) => totals.groceries + totals.bus
+  const getCashAppTransfer = (totals: ReturnType<typeof getRecurringExpenseTotals>) => totals.fromCashApp
 
   const value = useMemo(
     () => ({

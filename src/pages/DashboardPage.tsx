@@ -1,17 +1,18 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import Card from '../components/Card'
 import InfoRow from '../components/InfoRow'
 import Section from '../components/Section'
 import Sparkline from '../components/Sparkline'
 import { useAppState } from '../state'
+import { isRecurringExpenseDue } from '../recurring'
 
 export default function DashboardPage() {
   const {
     accounts,
     forecastPoints,
     payPeriods,
+    recurringExpenses,
     selectedPayPeriodId,
-    dashboardHeading,
     dashboardButtonText,
     getProjectedLeftover,
     getAvailableSpending,
@@ -19,6 +20,18 @@ export default function DashboardPage() {
     getCashAppTransfer,
     getRecurringTotals
   } = useAppState()
+
+  if (payPeriods.length === 0) {
+    return (
+      <div className="space-y-6">
+        <Section title="Dashboard" description="A calmer dashboard with the most useful information for your next paycheck.">
+          <Card title="No pay periods yet" subtitle="Add a pay period to see the current budget sheet.">
+            <p className="text-sm text-slate-600">Once you add at least one pay period, this dashboard will show the current pay period checklist and cashflow summary.</p>
+          </Card>
+        </Section>
+      </div>
+    )
+  }
 
   const selectedPeriod = payPeriods.find((period) => period.id === selectedPayPeriodId) ?? payPeriods[0]
   const periodIndex = payPeriods.findIndex((period) => period.id === selectedPeriod.id)
@@ -30,37 +43,46 @@ export default function DashboardPage() {
 
   const sortedForecast = (forecastPoints ?? []).slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-  // helper to build cumulative series for a given account id
   const buildSeriesFor = (accountId?: string) => {
     if (!sortedForecast.length) return [] as number[]
     if (accountId === 'total' || !accountId) {
-      // sum across accounts
-      const starting = accounts.reduce((s, a) => s + a.balance, 0)
-      let cur = starting
-      return sortedForecast.map((p) => {
-        const delta = Object.values(p.balanceAdjustments ?? {}).reduce((s, v) => s + (v ?? 0), 0)
-        cur = cur + delta
-        return cur
+      const starting = accounts.reduce((sum, account) => sum + account.balance, 0)
+      let current = starting
+      return sortedForecast.map((point) => {
+        const delta = Object.values(point.balanceAdjustments ?? {}).reduce((sum, value) => sum + (value ?? 0), 0)
+        current += delta
+        return current
       })
     }
 
-    const acct = accounts.find((a) => a.id === accountId)
-    const starting = acct?.balance ?? 0
-    let cur = starting
-    return sortedForecast.map((p) => {
-      const delta = (p.balanceAdjustments as any)?.[accountId] ?? 0
-      cur = cur + delta
-      return cur
+    const account = accounts.find((item) => item.id === accountId)
+    const starting = account?.balance ?? 0
+    let current = starting
+    return sortedForecast.map((point) => {
+      const delta = (point.balanceAdjustments as any)?.[accountId] ?? 0
+      current += delta
+      return current
     })
   }
 
   const [seriesTarget, setSeriesTarget] = React.useState<string | 'total'>('checking')
   const checkingSeries = buildSeriesFor(seriesTarget)
-  const labels = sortedForecast.map((p) => p.dateLabel)
+
+  const dueSavingsExpenses = useMemo(
+    () => recurringExpenses.filter((expense) => isRecurringExpenseDue(expense, periodIndex) && expense.sourceAccount === 'savings'),
+    [recurringExpenses, periodIndex]
+  )
+
+  const savingsExpensesTotal = recurringTotals.fromSavings
+  const subscriptionTotal = recurringTotals.fromChecking
+  const transferToCheckings = cashAppTransfer + subscriptionTotal + availableSpending
+  const outflows = selectedPeriod.transfers.rent + selectedPeriod.transfers.openbank + savingsExpensesTotal + transferToCheckings
+  const overage = Math.max(0, outflows - selectedPeriod.payAmount)
+  const negativeTransfer = transferToCheckings < 0
 
   return (
     <div className="space-y-6">
-      <Section title="Dashboard" description="A calmer dashboard with just the most useful information for your next paycheck.">
+      <Section title="Dashboard" description="A calmer dashboard with the most useful information for your next paycheck.">
         <div className="grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
           <div className="xl:col-span-2">
             <div className="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/40">
@@ -77,6 +99,7 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+
           <Card title="Current Spend" subtitle="This month" className="xl:col-span-1">
             <div className="rounded-lg bg-slate-50 p-4 text-slate-900 shadow-sm shadow-slate-200/30">
               <div className="flex items-start justify-between">
@@ -91,12 +114,10 @@ export default function DashboardPage() {
                     onChange={(e) => setSeriesTarget(e.target.value as any)}
                     className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs"
                   >
-                    <option value="checking">Checking</option>
-                    <option value="savings">Savings</option>
-                    <option value="openbank">Openbank</option>
-                    <option value="rentFund">Rent Fund</option>
-                    <option value="cashApp">CashApp</option>
-                    <option value="total">Total</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                    <option value="total">Total (all accounts)</option>
                   </select>
                   <div className="rounded-full bg-slate-900/10 px-3 py-1 text-xs font-medium text-slate-900">Payday in 5 days</div>
                 </div>
@@ -135,10 +156,10 @@ export default function DashboardPage() {
               <div className="grid gap-4">
                 <InfoRow label="Pay Amount" value={`$${selectedPeriod.payAmount.toLocaleString()}`} note="Expected net income" />
                 <InfoRow label="Rent Transfer" value={`$${selectedPeriod.transfers.rent.toLocaleString()}`} />
-                <InfoRow label="Openbank Transfer" value={`$${selectedPeriod.transfers.openbank.toLocaleString()}`} />
-                <InfoRow label="Credit Cards" value={`$${recurringTotals.creditCards.toLocaleString()}`} />
-                <InfoRow label="Subscriptions" value={`$${(recurringTotals.spotify + recurringTotals.amazon + recurringTotals.other).toLocaleString()}`} />
-                <InfoRow label="Insurance" value={`$${recurringTotals.insurance.toLocaleString()}`} />
+                <InfoRow label="OpenBank Transfer" value={`$${selectedPeriod.transfers.openbank.toLocaleString()}`} />
+                <InfoRow label="Savings Expenses" value={`$${savingsExpensesTotal.toLocaleString()}`} note="Due this period from savings" />
+                <InfoRow label="Subscriptions (Checkings)" value={`$${subscriptionTotal.toLocaleString()}`} />
+                <InfoRow label="CashApp Load" value={`$${cashAppTransfer.toLocaleString()}`} note={`$${recurringTotals.groceries} groceries + $${recurringTotals.bus} bus`} />
                 <div className="rounded-3xl bg-slate-50 p-5 shadow-sm shadow-slate-200/40">
                   <p className="text-sm font-medium text-slate-500">Projected Leftover</p>
                   <p className="mt-2 text-3xl font-semibold text-slate-900">${projectedLeftover.toLocaleString()}</p>
@@ -149,10 +170,53 @@ export default function DashboardPage() {
                 </div>
               </div>
             </Card>
+
+            <Card title="Upcoming Pay Period Checklist" subtitle="Follow these steps in order for the selected period.">
+              <div className="space-y-4 text-sm leading-6 text-slate-700">
+                <div className="rounded-3xl bg-slate-50 p-4">
+                  <p className="font-semibold text-slate-900">1. ✅ Paycheck (${selectedPeriod.payAmount.toLocaleString()}) lands in BofA Savings.</p>
+                </div>
+                <div className="rounded-3xl bg-slate-50 p-4">
+                  <p className="font-semibold text-slate-900">2. Transfer ${selectedPeriod.transfers.rent.toLocaleString()} → BofA Rent Holdings.</p>
+                </div>
+                <div className="rounded-3xl bg-slate-50 p-4">
+                  <p className="font-semibold text-slate-900">3. Transfer ${selectedPeriod.transfers.openbank.toLocaleString()} → OpenBank.</p>
+                </div>
+                <div className="rounded-3xl bg-slate-50 p-4">
+                  <p className="font-semibold text-slate-900">4. Pay the savings expenses due this period:</p>
+                  <ul className="mt-2 space-y-2 pl-4 text-slate-700">
+                    {dueSavingsExpenses.length > 0 ? (
+                      dueSavingsExpenses.map((expense) => (
+                        <li key={expense.id} className="marker:text-slate-500 list-disc">
+                          {expense.name} — ${expense.amount.toLocaleString()}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="list-disc text-slate-500">No savings expenses are due this period.</li>
+                    )}
+                  </ul>
+                </div>
+                <div className="rounded-3xl bg-slate-50 p-4">
+                  <p className="font-semibold text-slate-900">5. Transfer ${transferToCheckings.toLocaleString()} → BofA Checkings.</p>
+                </div>
+                <div className="rounded-3xl bg-slate-50 p-4">
+                  <p className="font-semibold text-slate-900">
+                    6. From Checkings, load ${cashAppTransfer.toLocaleString()} → CashApp ({`$${recurringTotals.groceries} groceries + $${recurringTotals.bus} bus`} ).
+                  </p>
+                </div>
+                {(overage > 0 || negativeTransfer) && (
+                  <div className="rounded-3xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+                    {overage > 0 ? (
+                      <p className="font-semibold">Warning: outflows exceed the paycheck by ${overage.toLocaleString()}.</p>
+                    ) : null}
+                    {negativeTransfer ? <p className="font-semibold">Warning: Transfer to Checkings is negative; review the checklist amounts.</p> : null}
+                  </div>
+                )}
+              </div>
+            </Card>
           </div>
         </div>
       </Section>
-
     </div>
   )
 }

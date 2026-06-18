@@ -2,11 +2,9 @@ export function calculateProjectedLeftover(
   paycheck: number,
   rentTransfer: number,
   openbankTransfer: number,
-  creditCards: number,
-  subscriptions: number,
-  insurance: number
+  savingsExpenses: number
 ) {
-  return paycheck - rentTransfer - openbankTransfer - creditCards - subscriptions - insurance
+  return paycheck - rentTransfer - openbankTransfer - savingsExpenses
 }
 
 export function calculateCashAppTransfer(groceries: number, bus: number) {
