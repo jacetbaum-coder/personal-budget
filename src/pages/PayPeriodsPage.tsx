@@ -7,22 +7,50 @@ import {
   calculateProjectedLeftover,
   calculateSafetyBuffer
 } from '../calculations'
-import type { PayPeriod } from '../models'
+import type { ExpenseCategory, PayPeriod, RecurringExpense } from '../models'
+import { expenseCategoryLabels } from '../models'
 import { isRecurringExpenseDue } from '../recurring'
 import { useAppState } from '../state'
 
+const FREQ_OPTIONS: RecurringExpense['frequency'][] = [
+  'Every paycheck',
+  'Every other paycheck',
+  'Monthly',
+  'Custom',
+]
+const CAT_OPTIONS = Object.entries(expenseCategoryLabels) as [ExpenseCategory, string][]
+
+function blankExpense(accounts: { id: string }[]): Omit<RecurringExpense, 'id'> {
+  return {
+    name: '',
+    amount: 0,
+    frequency: 'Every paycheck',
+    category: 'other',
+    sourceAccount: accounts[0]?.id ?? 'savings',
+  }
+}
+
 export default function PayPeriodsPage() {
   const {
+    accounts,
     payPeriods,
     setPayPeriods,
     recurringExpenses,
+    setRecurringExpenses,
     selectedPayPeriodId,
     setSelectedPayPeriodId,
     getRecurringTotals,
   } = useAppState()
 
+  // ── Pay-period edit state ──────────────────────────────────────────────────
   const [editMode, setEditMode] = useState(false)
   const [draftPeriods, setDraftPeriods] = useState<PayPeriod[]>(payPeriods)
+
+  // ── Expense edit state ─────────────────────────────────────────────────────
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [draftExp, setDraftExp] = useState<RecurringExpense | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+  const [newExp, setNewExp] = useState<Omit<RecurringExpense, 'id'>>(blankExpense(accounts))
 
   const selectedPeriod = useMemo(
     () => payPeriods.find((period) => period.id === selectedPayPeriodId) ?? payPeriods[0],
@@ -40,7 +68,6 @@ export default function PayPeriodsPage() {
   )
 
   const recurringTotals = getRecurringTotals(periodIndex)
-
   const projectedLeftover = calculateProjectedLeftover(
     selectedPeriod.payAmount,
     selectedPeriod.transfers.rent,
@@ -50,6 +77,7 @@ export default function PayPeriodsPage() {
   const safetyBuffer = calculateSafetyBuffer(projectedLeftover)
   const availableSpending = calculateAvailableSpending(projectedLeftover, safetyBuffer)
 
+  // ── Period-edit helpers ────────────────────────────────────────────────────
   const updateDraft = (id: number, patch: Partial<PayPeriod>) =>
     setDraftPeriods((curr) => curr.map((p) => (p.id === id ? { ...p, ...patch } : p)))
 
@@ -58,40 +86,61 @@ export default function PayPeriodsPage() {
       curr.map((p) => (p.id === id ? { ...p, transfers: { ...p.transfers, [key]: value } } : p))
     )
 
-  const startEdit = () => {
-    setDraftPeriods(payPeriods)
-    setEditMode(true)
+  const startEdit = () => { setDraftPeriods(payPeriods); setEditMode(true) }
+  const cancelEdit = () => { setDraftPeriods(payPeriods); setEditMode(false) }
+  const saveChanges = () => { setPayPeriods(draftPeriods); setEditMode(false) }
+
+  // ── Expense-edit helpers ───────────────────────────────────────────────────
+  const startEditExp = (exp: RecurringExpense) => {
+    setShowAdd(false)
+    setEditingId(exp.id)
+    setDraftExp({ ...exp })
+  }
+  const cancelEditExp = () => { setEditingId(null); setDraftExp(null) }
+  const saveEditExp = () => {
+    if (!draftExp) return
+    setRecurringExpenses((curr: RecurringExpense[]) =>
+      curr.map((e) => (e.id === draftExp.id ? draftExp : e))
+    )
+    cancelEditExp()
+  }
+  const deleteExp = (id: number) =>
+    setRecurringExpenses((curr: RecurringExpense[]) => curr.filter((e) => e.id !== id))
+
+  const commitAdd = () => {
+    if (!newExp.name.trim()) return
+    setRecurringExpenses((curr: RecurringExpense[]) => [...curr, { id: Date.now(), ...newExp }])
+    setNewExp(blankExpense(accounts))
+    setShowAdd(false)
   }
 
-  const cancelEdit = () => {
-    setDraftPeriods(payPeriods)
-    setEditMode(false)
-  }
+  const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? id
 
-  const saveChanges = () => {
-    setPayPeriods(draftPeriods)
-    setEditMode(false)
-  }
+  // ── Sorted expenses: due-first then alphabetical ───────────────────────────
+  const sortedExpenses = useMemo(
+    () =>
+      [...recurringExpenses].sort((a, b) => {
+        const aDue = isRecurringExpenseDue(a, periodIndex) ? 0 : 1
+        const bDue = isRecurringExpenseDue(b, periodIndex) ? 0 : 1
+        return aDue !== bDue ? aDue - bDue : a.name.localeCompare(b.name)
+      }),
+    [recurringExpenses, periodIndex]
+  )
 
   const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-900 focus:outline-none'
+  const selCls = inputCls
 
   return (
     <div className="space-y-6">
       <Section title="Pay Periods" description="What does my money look like across all upcoming periods?">
-        {/* Period selector grid — wraps for 7 items */}
+        {/* Period selector grid */}
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
           {payPeriods.map((period) => {
             const idx = payPeriods.indexOf(period)
-            const periodTotals = getRecurringTotals(idx)
-            const periodLeftover = calculateProjectedLeftover(
-              period.payAmount,
-              period.transfers.rent,
-              period.transfers.openbank,
-              periodTotals.fromSavings
-            )
-            const periodAvailable = calculateAvailableSpending(periodLeftover, calculateSafetyBuffer(periodLeftover))
+            const pt = getRecurringTotals(idx)
+            const lft = calculateProjectedLeftover(period.payAmount, period.transfers.rent, period.transfers.openbank, pt.fromSavings)
+            const avail = calculateAvailableSpending(lft, calculateSafetyBuffer(lft))
             const active = period.id === selectedPayPeriodId
-
             return (
               <button
                 key={period.id}
@@ -103,16 +152,18 @@ export default function PayPeriodsPage() {
                     : 'border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50'
                 }`}
               >
-                <p className={`text-xs font-semibold uppercase tracking-wider ${active ? 'text-slate-400' : 'text-slate-400'}`}>{period.label}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{period.label}</p>
                 <p className="mt-2 text-xl font-semibold">${period.payAmount.toLocaleString()}</p>
-                <p className={`mt-2 text-xs ${active ? 'text-slate-400' : 'text-slate-400'}`}>${periodAvailable.toLocaleString()} avail.</p>
+                <p className="mt-2 text-xs text-slate-400">${avail.toLocaleString()} avail.</p>
               </button>
             )
           })}
         </div>
 
-        {/* Detail panel for selected period */}
-        <div className="grid gap-6 lg:grid-cols-2">
+        {/* Detail + Expenses grid */}
+        <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">
+
+          {/* Period detail (left) */}
           <Card
             title={`Period detail — ${selectedPeriod.label}`}
             subtitle={`Pay date: ${selectedPeriod.payDate}`}
@@ -153,7 +204,7 @@ export default function PayPeriodsPage() {
                   <InfoRow label="OpenBank transfer" value={`$${selectedPeriod.transfers.openbank.toLocaleString()}`} />
                 </>
               )}
-              <div className="my-1 border-t border-slate-100" />
+              <div className="border-t border-slate-100" />
               <InfoRow label="Savings expenses due" value={`$${recurringTotals.fromSavings.toLocaleString()}`} />
               <InfoRow label="Checkings expenses" value={`$${recurringTotals.fromChecking.toLocaleString()}`} />
               <InfoRow label="CashApp load" value={`$${recurringTotals.fromCashApp.toLocaleString()}`} />
@@ -163,20 +214,177 @@ export default function PayPeriodsPage() {
             </div>
           </Card>
 
-          <Card title="Expenses due this period" subtitle="All recurring items that fall on this pay date.">
-            <div className="space-y-2">
-              {recurringExpenses
-                .filter((e) => isRecurringExpenseDue(e, periodIndex))
-                .sort((a, b) => b.amount - a.amount)
-                .map((expense) => (
-                  <div key={expense.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm">
-                    <div>
-                      <p className="font-medium text-slate-900">{expense.name}</p>
-                      <p className="text-xs text-slate-400 capitalize">{expense.sourceAccount} · {expense.frequency}</p>
-                    </div>
-                    <p className="font-semibold text-slate-900">${expense.amount.toLocaleString()}</p>
+          {/* Recurring expenses manager (right) */}
+          <Card
+            title="Recurring expenses"
+            subtitle="All bills and transfers. Click Edit on any row to change it."
+            action={
+              !showAdd ? (
+                <button
+                  onClick={() => { setShowAdd(true); setEditingId(null); setNewExp(blankExpense(accounts)) }}
+                  className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+                >
+                  + Add
+                </button>
+              ) : undefined
+            }
+          >
+            {/* Add form */}
+            {showAdd && (
+              <div className="mb-4 rounded-2xl border border-slate-300 bg-slate-50 p-4">
+                <p className="mb-3 text-sm font-semibold text-slate-900">New expense</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs text-slate-500">Name</label>
+                    <input className={inputCls} placeholder="e.g. Netflix" value={newExp.name}
+                      onChange={(e) => setNewExp((p) => ({ ...p, name: e.target.value }))} />
                   </div>
-                ))}
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Amount ($)</label>
+                    <input type="number" className={inputCls} value={newExp.amount}
+                      onChange={(e) => setNewExp((p) => ({ ...p, amount: Number(e.target.value) }))} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Frequency</label>
+                    <select className={selCls} value={newExp.frequency}
+                      onChange={(e) => setNewExp((p) => ({ ...p, frequency: e.target.value as RecurringExpense['frequency'] }))}>
+                      {FREQ_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Account</label>
+                    <select className={selCls} value={newExp.sourceAccount}
+                      onChange={(e) => setNewExp((p) => ({ ...p, sourceAccount: e.target.value }))}>
+                      {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Category</label>
+                    <select className={selCls} value={newExp.category}
+                      onChange={(e) => setNewExp((p) => ({ ...p, category: e.target.value as ExpenseCategory }))}>
+                      {CAT_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                  {newExp.frequency === 'Every other paycheck' && (
+                    <div>
+                      <label className="mb-1 block text-xs text-slate-500">Cycle</label>
+                      <select className={selCls} value={newExp.cycleOffset ?? 0}
+                        onChange={(e) => setNewExp((p) => ({ ...p, cycleOffset: Number(e.target.value) }))}>
+                        <option value={0}>Even periods (starts now)</option>
+                        <option value={1}>Odd periods (starts next)</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={commitAdd}
+                    className="rounded-full bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-800">
+                    Add expense
+                  </button>
+                  <button onClick={() => setShowAdd(false)}
+                    className="rounded-full border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Expense list */}
+            <div className="space-y-2">
+              {sortedExpenses.map((expense) => {
+                const due = isRecurringExpenseDue(expense, periodIndex)
+                const isEditing = editingId === expense.id
+
+                if (isEditing && draftExp) {
+                  return (
+                    <div key={expense.id} className="rounded-2xl border border-slate-300 bg-slate-50 p-4">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <label className="mb-1 block text-xs text-slate-500">Name</label>
+                          <input className={inputCls} value={draftExp.name}
+                            onChange={(e) => setDraftExp((p) => p ? { ...p, name: e.target.value } : p)} />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-500">Amount ($)</label>
+                          <input type="number" className={inputCls} value={draftExp.amount}
+                            onChange={(e) => setDraftExp((p) => p ? { ...p, amount: Number(e.target.value) } : p)} />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-500">Frequency</label>
+                          <select className={selCls} value={draftExp.frequency}
+                            onChange={(e) => setDraftExp((p) => p ? { ...p, frequency: e.target.value as RecurringExpense['frequency'] } : p)}>
+                            {FREQ_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-500">Account</label>
+                          <select className={selCls} value={draftExp.sourceAccount}
+                            onChange={(e) => setDraftExp((p) => p ? { ...p, sourceAccount: e.target.value } : p)}>
+                            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-500">Category</label>
+                          <select className={selCls} value={draftExp.category}
+                            onChange={(e) => setDraftExp((p) => p ? { ...p, category: e.target.value as ExpenseCategory } : p)}>
+                            {CAT_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                          </select>
+                        </div>
+                        {draftExp.frequency === 'Every other paycheck' && (
+                          <div>
+                            <label className="mb-1 block text-xs text-slate-500">Cycle</label>
+                            <select className={selCls} value={draftExp.cycleOffset ?? 0}
+                              onChange={(e) => setDraftExp((p) => p ? { ...p, cycleOffset: Number(e.target.value) } : p)}>
+                              <option value={0}>Even periods</option>
+                              <option value={1}>Odd periods</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-3 flex items-center gap-2">
+                        <button onClick={saveEditExp}
+                          className="rounded-full bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-800">
+                          Save
+                        </button>
+                        <button onClick={cancelEditExp}
+                          className="rounded-full border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                          Cancel
+                        </button>
+                        <button onClick={() => deleteExp(expense.id)}
+                          className="ml-auto rounded-full border border-red-200 bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div
+                    key={expense.id}
+                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm ${due ? 'bg-slate-50' : 'bg-white opacity-50'}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-medium text-slate-900">{expense.name}</p>
+                        {due && (
+                          <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">due</span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        {accountName(expense.sourceAccount)} · {expense.frequency}
+                      </p>
+                    </div>
+                    <p className="shrink-0 font-semibold text-slate-900">${expense.amount.toLocaleString()}</p>
+                    <button
+                      onClick={() => startEditExp(expense)}
+                      className="shrink-0 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           </Card>
         </div>
