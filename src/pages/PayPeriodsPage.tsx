@@ -137,6 +137,85 @@ export default function PayPeriodsPage() {
   const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-900 focus:outline-none'
   const selCls = inputCls
 
+  // ── Account group order: savings → rent → checking (↳ cashApp ↳ spending) → openbank
+  const GROUP_ORDER = ['savings', 'rentFund', 'checking', 'openbank'] as const
+  const byAccount = (id: string) => sortedExpenses.filter((e) => e.sourceAccount === id)
+
+  const renderExpRow = (expense: RecurringExpense) => {
+    const due = isRecurringExpenseDue(expense, periodIndex)
+    if (editingId === expense.id && draftExp) {
+      return (
+        <div key={expense.id} className="rounded-2xl border border-slate-300 bg-slate-50 p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs text-slate-500">Name</label>
+              <input className={inputCls} value={draftExp.name}
+                onChange={(e) => setDraftExp((p) => p ? { ...p, name: e.target.value } : p)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">Amount ($)</label>
+              <input type="number" className={inputCls} value={draftExp.amount}
+                onChange={(e) => setDraftExp((p) => p ? { ...p, amount: Number(e.target.value) } : p)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">Frequency</label>
+              <select className={selCls} value={draftExp.frequency}
+                onChange={(e) => setDraftExp((p) => p ? { ...p, frequency: e.target.value as RecurringExpense['frequency'] } : p)}>
+                {FREQ_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">Account</label>
+              <select className={selCls} value={draftExp.sourceAccount}
+                onChange={(e) => setDraftExp((p) => p ? { ...p, sourceAccount: e.target.value } : p)}>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">Category</label>
+              <select className={selCls} value={draftExp.category}
+                onChange={(e) => setDraftExp((p) => p ? { ...p, category: e.target.value as ExpenseCategory } : p)}>
+                {CAT_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">Bill due date (optional)</label>
+              <input className={inputCls} placeholder="e.g. the 15th" value={draftExp.dueDate ?? ''}
+                onChange={(e) => setDraftExp((p) => p ? { ...p, dueDate: e.target.value } : p)} />
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <button onClick={saveEditExp}
+              className="rounded-full bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-800">Save</button>
+            <button onClick={cancelEditExp}
+              className="rounded-full border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+            <button onClick={() => deleteExp(expense.id)}
+              className="ml-auto rounded-full border border-red-200 bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">Delete</button>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div
+        key={expense.id}
+        className={`flex items-center gap-3 rounded-xl border-l-4 pl-3 pr-4 py-2.5 text-sm ${getColorClasses(accounts.find((a) => a.id === expense.sourceAccount)?.color).border} ${due ? 'bg-slate-50' : 'bg-white opacity-50'}`}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="truncate font-medium text-slate-900">{expense.name}</p>
+            {due && <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">due</span>}
+          </div>
+          <p className="mt-0.5 text-xs text-slate-400">
+            {expense.frequency}{expense.dueDate ? <span className="ml-1 text-slate-300"> · due {expense.dueDate}</span> : null}
+          </p>
+        </div>
+        <p className="shrink-0 font-semibold text-slate-900">${expense.amount.toLocaleString()}</p>
+        <button onClick={() => startEditExp(expense)}
+          className="shrink-0 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">Edit</button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <Section title="Pay Periods" description="What does my money look like across all upcoming periods?">
@@ -291,95 +370,68 @@ export default function PayPeriodsPage() {
               </div>
             )}
 
-            {/* Expense list */}
-            <div className="space-y-2">
-              {sortedExpenses.map((expense) => {
-                const due = isRecurringExpenseDue(expense, periodIndex)
-                const isEditing = editingId === expense.id
-
-                if (isEditing && draftExp) {
-                  return (
-                    <div key={expense.id} className="rounded-2xl border border-slate-300 bg-slate-50 p-4">
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="sm:col-span-2">
-                          <label className="mb-1 block text-xs text-slate-500">Name</label>
-                          <input className={inputCls} value={draftExp.name}
-                            onChange={(e) => setDraftExp((p) => p ? { ...p, name: e.target.value } : p)} />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs text-slate-500">Amount ($)</label>
-                          <input type="number" className={inputCls} value={draftExp.amount}
-                            onChange={(e) => setDraftExp((p) => p ? { ...p, amount: Number(e.target.value) } : p)} />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs text-slate-500">Frequency</label>
-                          <select className={selCls} value={draftExp.frequency}
-                            onChange={(e) => setDraftExp((p) => p ? { ...p, frequency: e.target.value as RecurringExpense['frequency'] } : p)}>
-                            {FREQ_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs text-slate-500">Account</label>
-                          <select className={selCls} value={draftExp.sourceAccount}
-                            onChange={(e) => setDraftExp((p) => p ? { ...p, sourceAccount: e.target.value } : p)}>
-                            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs text-slate-500">Category</label>
-                          <select className={selCls} value={draftExp.category}
-                            onChange={(e) => setDraftExp((p) => p ? { ...p, category: e.target.value as ExpenseCategory } : p)}>
-                            {CAT_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs text-slate-500">Bill due date (optional)</label>
-                          <input className={inputCls} placeholder="e.g. the 15th" value={draftExp.dueDate ?? ''}
-                            onChange={(e) => setDraftExp((p) => p ? { ...p, dueDate: e.target.value } : p)} />
-                        </div>
-                      </div>
-                      <div className="mt-3 flex items-center gap-2">
-                        <button onClick={saveEditExp}
-                          className="rounded-full bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-800">
-                          Save
-                        </button>
-                        <button onClick={cancelEditExp}
-                          className="rounded-full border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
-                          Cancel
-                        </button>
-                        <button onClick={() => deleteExp(expense.id)}
-                          className="ml-auto rounded-full border border-red-200 bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  )
-                }
+            {/* Grouped expense list */}
+            <div className="space-y-5">
+              {GROUP_ORDER.map((accountId) => {
+                const account = accounts.find((a) => a.id === accountId)
+                if (!account) return null
+                const colorCls = getColorClasses(account.color)
+                const groupExps = byAccount(accountId)
+                const cashAppExps = accountId === 'checking' ? byAccount('cashApp') : []
+                // total due this period for this group (including sub-groups for checking)
+                const dueTotal = [...groupExps, ...(accountId === 'checking' ? cashAppExps : [])]
+                  .filter((e) => isRecurringExpenseDue(e, periodIndex))
+                  .reduce((s, e) => s + e.amount, 0)
 
                 return (
-                  <div
-                    key={expense.id}
-                    className={`flex items-center gap-3 rounded-xl border-l-4 pl-3 pr-4 py-3 text-sm ${getColorClasses(accounts.find(a => a.id === expense.sourceAccount)?.color).border} ${due ? 'bg-slate-50' : 'bg-white opacity-50'}`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate font-medium text-slate-900">{expense.name}</p>
-                        {due && (
-                          <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">due</span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 text-xs text-slate-400">
-                        {accountName(expense.sourceAccount)} · {expense.frequency}
-                        {expense.dueDate ? <span className="ml-1 text-slate-300">· due {expense.dueDate}</span> : null}
-                      </p>
+                  <div key={accountId}>
+                    {/* Group header */}
+                    <div className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-2">
+                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colorCls.dot}`} />
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">{account.name}</p>
+                      {dueTotal > 0 && <span className="ml-auto text-xs font-medium text-slate-400">${dueTotal.toLocaleString()} due</span>}
                     </div>
-                    <p className="shrink-0 font-semibold text-slate-900">${expense.amount.toLocaleString()}</p>
-                    <button
-                      onClick={() => startEditExp(expense)}
-                      className="shrink-0 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                    >
-                      Edit
-                    </button>
+
+                    {/* Group expenses (or transfer info if empty) */}
+                    {groupExps.length > 0 ? (
+                      <div className="space-y-1.5">{groupExps.map(renderExpRow)}</div>
+                    ) : accountId === 'rentFund' ? (
+                      <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                        ${selectedPeriod.transfers.rent.toLocaleString()} transferred from BofA Savings each period.
+                      </p>
+                    ) : accountId === 'openbank' ? (
+                      <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                        ${selectedPeriod.transfers.openbank.toLocaleString()} transferred from BofA Savings each period.
+                      </p>
+                    ) : null}
+
+                    {/* Sub-groups under Checkings */}
+                    {accountId === 'checking' && (
+                      <div className="mt-3 ml-3 space-y-4 border-l-2 border-slate-100 pl-4">
+                        {/* CashApp */}
+                        <div>
+                          <div className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-2">
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+                            <p className="text-xs font-semibold uppercase tracking-wider text-amber-600">CashApp</p>
+                            {recurringTotals.fromCashApp > 0 && (
+                              <span className="ml-auto text-xs text-slate-400">${recurringTotals.fromCashApp.toLocaleString()} due</span>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">{cashAppExps.map(renderExpRow)}</div>
+                        </div>
+                        {/* Spending Money */}
+                        <div>
+                          <div className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-2">
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-slate-300" />
+                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Spending Money</p>
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">
+                            <p>Available this period</p>
+                            <p className="font-semibold">${availableSpending.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}
