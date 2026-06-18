@@ -274,7 +274,7 @@ export default function PayPeriodsPage() {
         }
       }
       case 'rent': {
-        const isFirstPeriod = periodIndex % 2 === 0
+        const isFirstPeriod = (periodIndex + 1) % 2 === 0
         const threshold = isFirstPeriod ? 600 : 1200
         const newTransfer = selectedPeriod.transfers.rent - delta
         const cumulative = isFirstPeriod ? newTransfer : 600 + newTransfer
@@ -341,7 +341,7 @@ function getExpFundingSources(
   const spendingAfter = spendingMoney - delta
   const openbankAfter = openbankTransfer - delta
 
-  const isFirstPeriod = periodIndex % 2 === 0
+  const isFirstPeriod = (periodIndex + 1) % 2 === 0
   const rentThreshold = isFirstPeriod ? 600 : 1200
   const newRentTransfer = rentTransfer - delta
   const rentCumulative = isFirstPeriod ? newRentTransfer : 600 + newRentTransfer
@@ -481,6 +481,25 @@ const FUNDING_SOURCE_OPTIONS = [
               <input className={inputCls} placeholder="e.g. the 15th" value={draftExp.dueDate ?? ''}
                 onChange={(e) => setDraftExp((p) => p ? { ...p, dueDate: e.target.value } : p)} />
             </div>
+            <div className="sm:col-span-2">
+              <label className="mb-2 block text-xs text-slate-500">Status</label>
+              <div className="flex gap-2">
+                <button type="button"
+                  onClick={() => setDraftExp((p) => p ? { ...p, active: true } : p)}
+                  className={`flex-1 rounded-xl border py-2 text-xs font-medium transition-colors ${
+                    draftExp.active !== false ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                  }`}>
+                  Active
+                </button>
+                <button type="button"
+                  onClick={() => setDraftExp((p) => p ? { ...p, active: false } : p)}
+                  className={`flex-1 rounded-xl border py-2 text-xs font-medium transition-colors ${
+                    draftExp.active === false ? 'border-slate-400 bg-slate-100 text-slate-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                  }`}>
+                  Not active
+                </button>
+              </div>
+            </div>
           </div>
           <div className="mt-3 flex items-center gap-2">
             <button onClick={saveEditExp}
@@ -496,18 +515,20 @@ const FUNDING_SOURCE_OPTIONS = [
     return (
       <div
         key={expense.id}
-        className={`flex items-center gap-3 rounded-xl border-l-4 pl-3 pr-4 py-2.5 text-sm ${getColorClasses(accounts.find((a) => a.id === expense.sourceAccount)?.color).border} ${due ? 'bg-slate-50' : 'bg-white opacity-50'}`}
+        className={`flex items-center gap-3 rounded-xl border-l-4 pl-3 pr-4 py-2.5 text-sm ${getColorClasses(accounts.find((a) => a.id === expense.sourceAccount)?.color).border} ${expense.active === false ? 'bg-white opacity-40' : due ? 'bg-slate-50' : 'bg-white opacity-50'}`}
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="truncate font-medium text-slate-900">{expense.name}</p>
-            {due && <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">due</span>}
+            {expense.active === false
+              ? <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">paused</span>
+              : due && <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">due</span>}
           </div>
           <p className="mt-0.5 text-xs text-slate-400">
             {expense.frequency}{expense.dueDate ? <span className="ml-1 text-slate-300"> · due {expense.dueDate}</span> : null}
           </p>
         </div>
-        <p className="shrink-0 font-semibold text-slate-900">${expense.amount.toLocaleString()}</p>
+        <p className={`shrink-0 font-semibold ${expense.active === false ? 'text-slate-400' : 'text-slate-900'}`}>${expense.amount.toLocaleString()}</p>
         <button onClick={() => startEditExp(expense)}
           className="shrink-0 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">Edit</button>
       </div>

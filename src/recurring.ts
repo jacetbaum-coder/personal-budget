@@ -11,14 +11,17 @@ export interface RecurringExpenseTotals {
 }
 
 export function isRecurringExpenseDue(expense: RecurringExpense, periodIndex: number): boolean {
+  if (expense.active === false) return false
+  // periodIndex 0 = Jun 18 = 2nd paycheck of June, so add 1 before mod
+  const monthlyParity = (periodIndex + 1) % 2
   switch (expense.frequency) {
     case 'Every paycheck':
       return true
     case '1st paycheck of month':
     case 'Monthly':
-      return periodIndex % 2 === 0
+      return monthlyParity === 0
     case '2nd paycheck of month':
-      return periodIndex % 2 === 1
+      return monthlyParity === 1
     case 'Custom':
       return expense.customInterval != null ? periodIndex % expense.customInterval === 0 : false
     default:

@@ -337,6 +337,25 @@ export default function AccountsPage() {
                         <input className={inputCls} placeholder="e.g. the 15th" value={expense.dueDate ?? ''}
                           onChange={(e) => updateDraftExpense(expense.id, { dueDate: e.target.value })} />
                       </div>
+                      <div>
+                        <label className="mb-2 block text-xs text-slate-500">Status</label>
+                        <div className="flex gap-2">
+                          <button type="button"
+                            onClick={() => updateDraftExpense(expense.id, { active: true })}
+                            className={`flex-1 rounded-xl border py-2 text-xs font-medium transition-colors ${
+                              expense.active !== false ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                            }`}>
+                            Active
+                          </button>
+                          <button type="button"
+                            onClick={() => updateDraftExpense(expense.id, { active: false })}
+                            className={`flex-1 rounded-xl border py-2 text-xs font-medium transition-colors ${
+                              expense.active === false ? 'border-slate-400 bg-slate-100 text-slate-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                            }`}>
+                            Not active
+                          </button>
+                        </div>
+                      </div>
                       <div className="flex items-end sm:col-span-2 md:col-span-1">
                         <button onClick={() => removeDraftExpense(expense.id)}
                           className="w-full rounded-xl border border-red-200 bg-red-50 py-2 text-xs font-medium text-red-600 hover:bg-red-100">
@@ -347,13 +366,16 @@ export default function AccountsPage() {
                   ) : (
                     <div className={`flex items-start justify-between gap-4 border-l-4 pl-3 ${getColorClasses(displayedAccounts.find(a => a.id === expense.sourceAccount)?.color).border}`}>
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-slate-900">{expense.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-slate-900">{expense.name}</p>
+                          {expense.active === false && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">paused</span>}
+                        </div>
                         <p className="text-sm text-slate-400">{accountName(expense.sourceAccount)} · {expense.frequency}</p>
                         {expense.dueDate && (
                           <p className="mt-0.5 text-xs text-slate-400">Due {expense.dueDate}</p>
                         )}
                       </div>
-                      <p className="shrink-0 text-lg font-semibold text-slate-900">${expense.amount.toLocaleString()}</p>
+                      <p className={`shrink-0 text-lg font-semibold ${expense.active === false ? 'text-slate-400' : 'text-slate-900'}`}>${expense.amount.toLocaleString()}</p>
                     </div>
                   )}
                 </div>

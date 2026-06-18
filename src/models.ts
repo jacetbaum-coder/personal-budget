@@ -76,6 +76,8 @@ export interface RecurringExpense {
   /** Optional bill due date, e.g. "the 15th" or "2026-07-15" — display only. */
   dueDate?: string
   customInterval?: number
+  /** When false, expense is parked/paused — not counted in totals or shown as due. Omitting = active. */
+  active?: boolean
 }
 
 export type TransactionType = 'transfer' | 'expense' | 'income' | 'adjustment'
