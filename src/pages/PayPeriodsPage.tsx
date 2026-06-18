@@ -116,42 +116,6 @@ export default function PayPeriodsPage() {
               })}
             </div>
 
-            <Card title="Recurring expenses" subtitle="Editable mock data for recurring bills.">
-              <div className="space-y-3">
-                {recurringExpenses.map((expense) => (
-                  <div key={expense.id} className="grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[2fr_1fr_1fr]">
-                    <div>
-                      <p className="font-semibold text-slate-900">{expense.name}</p>
-                      <p className="text-sm text-slate-500">Next due: {isRecurringExpenseDue(expense, periodIndex) ? 'Included this period' : 'Skipped this period'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Amount</label>
-                      <input
-                        type="number"
-                        value={expense.amount}
-                        onChange={(event) => updateExpense(expense.id, 'amount', Number(event.target.value))}
-                        className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Frequency</label>
-                      <select
-                        value={expense.frequency}
-                        onChange={(event) => updateExpense(expense.id, 'frequency', event.target.value as RecurringFrequency)}
-                        className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-900 focus:outline-none"
-                      >
-                        {frequencyOptions.map((frequency) => (
-                          <option key={frequency} value={frequency}>
-                            {frequency}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </div>
 
           <div className="space-y-4">
             <Card title="Selected pay period details" subtitle={`${selectedPeriod.label} • ${selectedPeriod.payDate}`}>

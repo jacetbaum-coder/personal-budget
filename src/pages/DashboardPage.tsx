@@ -8,6 +8,8 @@ export default function DashboardPage() {
     accounts,
     payPeriods,
     selectedPayPeriodId,
+    dashboardHeading,
+    dashboardButtonText,
     getProjectedLeftover,
     getAvailableSpending,
     getSafetyBuffer,
@@ -27,6 +29,19 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <Section title="Dashboard" description="Your financial command center for spending, cashflow, and upcoming paychecks.">
         <div className="grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
+          <div className="xl:col-span-2">
+            <div className="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/40">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-3xl font-semibold text-slate-950">{dashboardHeading}</h2>
+                  <p className="mt-2 text-sm text-slate-500">Your future cashflow at a glance</p>
+                </div>
+                <button className="inline-flex items-center justify-center rounded-3xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800">
+                  {dashboardButtonText}
+                </button>
+              </div>
+            </div>
+          </div>
           <Card title="Available to Spend" subtitle="Your safe spending amount before the next paycheck." className="xl:col-span-1">
             <div className="rounded-[2rem] bg-slate-950 p-8 text-white shadow-xl shadow-slate-950/20">
               <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Available Spending</p>

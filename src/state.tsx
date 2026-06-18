@@ -27,12 +27,26 @@ export interface AppState {
   selectedForecastPointId: number
   extraMoney: number
   selectedMoverDestination: Account['id']
+  dashboardHeading: string
+  dashboardButtonText: string
+  defaultPayPeriodLabel: string
+  currency: string
+  forecastHorizon: number
+  notifications: { email: boolean; push: boolean }
+  setAccounts: (accounts: Account[]) => void
+  setPayPeriods: (payPeriods: PayPeriod[]) => void
   setRecurringExpenses: (expenses: RecurringExpense[] | ((current: RecurringExpense[]) => RecurringExpense[])) => void
   setTransactions: (transactions: TransactionRecord[] | ((current: TransactionRecord[]) => TransactionRecord[])) => void
   setSelectedPayPeriodId: (id: number) => void
   setSelectedForecastPointId: (id: number) => void
   setExtraMoney: (amount: number) => void
   setSelectedMoverDestination: (destination: Account['id']) => void
+  setDashboardHeading: (heading: string) => void
+  setDashboardButtonText: (text: string) => void
+  setDefaultPayPeriodLabel: (label: string) => void
+  setCurrency: (currency: string) => void
+  setForecastHorizon: (horizon: number) => void
+  setNotifications: (notifications: { email: boolean; push: boolean }) => void
   getProjectedLeftover: (payPeriod: PayPeriod, totals: ReturnType<typeof getRecurringExpenseTotals>) => number
   getAvailableSpending: (leftover: number) => number
   getSafetyBuffer: (leftover: number) => number
@@ -44,8 +58,8 @@ export interface AppState {
 const AppStateContext = createContext<AppState | undefined>(undefined)
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [accounts] = useState<Account[]>(sampleAccounts)
-  const [payPeriods] = useState<PayPeriod[]>(samplePayPeriods)
+  const [accounts, setAccounts] = useState<Account[]>(sampleAccounts)
+  const [payPeriods, setPayPeriods] = useState<PayPeriod[]>(samplePayPeriods)
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>(sampleRecurringExpenses)
   const [forecastPoints] = useState<ForecastPoint[]>(sampleForecastPoints)
   const [transactions, rawSetTransactions] = useState<TransactionRecord[]>([])
@@ -53,6 +67,15 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [selectedForecastPointId, setSelectedForecastPointId] = useState<number>(4)
   const [extraMoney, setExtraMoney] = useState<number>(520)
   const [selectedMoverDestination, setSelectedMoverDestination] = useState<Account['id']>('checking')
+  const [dashboardHeading, setDashboardHeading] = useState<string>('Your future cashflow at a glance')
+  const [dashboardButtonText, setDashboardButtonText] = useState<string>('New allocation')
+  const [defaultPayPeriodLabel, setDefaultPayPeriodLabel] = useState<string>('Biweekly')
+  const [currency, setCurrency] = useState<string>('USD')
+  const [forecastHorizon, setForecastHorizon] = useState<number>(30)
+  const [notifications, setNotifications] = useState<{ email: boolean; push: boolean }>({
+    email: false,
+    push: true
+  })
 
   // Wrapper to handle both value and function patterns
   const wrappedSetRecurringExpenses = (expenses: RecurringExpense[] | ((current: RecurringExpense[]) => RecurringExpense[])) => {
@@ -99,12 +122,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       selectedForecastPointId,
       extraMoney,
       selectedMoverDestination,
+      dashboardHeading,
+      dashboardButtonText,
+      defaultPayPeriodLabel,
+      currency,
+      forecastHorizon,
+      notifications,
+      setAccounts,
+      setPayPeriods,
       setRecurringExpenses: wrappedSetRecurringExpenses,
       setTransactions: wrappedSetTransactions,
       setSelectedPayPeriodId,
       setSelectedForecastPointId,
       setExtraMoney,
       setSelectedMoverDestination,
+      setDashboardHeading,
+      setDashboardButtonText,
+      setDefaultPayPeriodLabel,
+      setCurrency,
+      setForecastHorizon,
+      setNotifications,
       getProjectedLeftover,
       getAvailableSpending,
       getSafetyBuffer,
@@ -121,7 +158,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       selectedPayPeriodId,
       selectedForecastPointId,
       extraMoney,
-      selectedMoverDestination
+      selectedMoverDestination,
+      dashboardHeading,
+      dashboardButtonText,
+      defaultPayPeriodLabel,
+      currency,
+      forecastHorizon,
+      notifications
     ]
   )
 
