@@ -86,6 +86,21 @@ export default function PayPeriodsPage() {
   const safetyBuffer = calculateSafetyBuffer()
   const availableSpending = calculateAvailableSpending(projectedLeftover)
 
+  // ── CashApp manual adjustment planning ────────────────────────────────────
+  const [cashAppPlan, setCashAppPlan] = useState<{
+    override: number | null
+    source: string | null
+    confirmed: boolean
+  }>({ override: null, source: null, confirmed: false })
+
+  useEffect(() => {
+    setCashAppPlan({ override: null, source: null, confirmed: false })
+  }, [selectedPayPeriodId])
+
+  const cashAppComputed = recurringTotals.fromCashApp
+  const cashAppAmount = cashAppPlan.override ?? cashAppComputed
+  const cashAppDelta = cashAppAmount - cashAppComputed
+
   // ── Period-edit helpers ────────────────────────────────────────────────────
   const updateDraft = (id: number, patch: Partial<PayPeriod>) =>
     setDraftPeriods((curr) => curr.map((p) => (p.id === id ? { ...p, ...patch } : p)))
@@ -125,6 +140,69 @@ export default function PayPeriodsPage() {
 
   const accountName = (id: string) => accounts.find((a) => a.id === id)?.name ?? id
 
+  // ── CashApp adjustment: per-source consequence ────────────────────────────
+  const getCashAppSourceConsequence = (sourceId: string, delta: number): { text: string; warning: boolean; requiresConfirm: boolean } => {
+    switch (sourceId) {
+      case 'savings': {
+        const remaining = SAVINGS_BUFFER - delta
+        const warn = remaining < 0
+        return {
+          text: warn
+            ? `Exceeds your BofA Savings safety buffer ($${SAVINGS_BUFFER}). Buffer would go −$${Math.abs(remaining)}.`
+            : `BofA Savings buffer: $${SAVINGS_BUFFER} → $${remaining}. Still within safety cushion.`,
+          warning: warn, requiresConfirm: warn,
+        }
+      }
+      case 'checking': {
+        const remaining = CHECKING_BUFFER - delta
+        const warn = remaining < 0
+        return {
+          text: warn
+            ? `Exceeds your BofA Checkings safety buffer ($${CHECKING_BUFFER}). Buffer would go −$${Math.abs(remaining)}.`
+            : `BofA Checkings buffer: $${CHECKING_BUFFER} → $${remaining}. Still within safety cushion.`,
+          warning: warn, requiresConfirm: warn,
+        }
+      }
+      case 'spending': {
+        const remaining = availableSpending - delta
+        const warn = remaining < 0
+        return {
+          text: warn
+            ? `Spending money would go negative (−$${Math.abs(remaining)}). You'd be spending more than available.`
+            : `Available spending: $${availableSpending} → $${remaining} this period.`,
+          warning: warn, requiresConfirm: warn,
+        }
+      }
+      case 'openbank': {
+        const remaining = selectedPeriod.transfers.openbank - delta
+        const warn = remaining < 0
+        return {
+          text: warn
+            ? `OpenBank transfer would go negative. You'd need to pull $${Math.abs(remaining)} directly from your OpenBank account.`
+            : `OpenBank transfer this period: $${selectedPeriod.transfers.openbank} → $${remaining}.`,
+          warning: warn, requiresConfirm: warn,
+        }
+      }
+      case 'rent': {
+        const isFirstPeriod = periodIndex % 2 === 0
+        const threshold = isFirstPeriod ? 600 : 1200
+        const newTransfer = selectedPeriod.transfers.rent - delta
+        const cumulative = isFirstPeriod ? newTransfer : 600 + newTransfer
+        const warn = cumulative < threshold
+        const shortfall = threshold - cumulative
+        return {
+          text: warn
+            ? `Rent fund would have $${cumulative} this ${isFirstPeriod ? 'period' : 'month'} — $${shortfall} short of the $${threshold} target. You'll need to separately add $${shortfall} to BofA Rent Holdings to cover rent.`
+            : `Rent transfer: $${selectedPeriod.transfers.rent} → $${newTransfer}. Rent fund still covered ($${cumulative}/$${threshold}).`,
+          warning: warn,
+          requiresConfirm: true, // always confirm when touching rent
+        }
+      }
+      default:
+        return { text: '', warning: false, requiresConfirm: false }
+    }
+  }
+
   // ── Sorted expenses: due-first then alphabetical ───────────────────────────
   const sortedExpenses = useMemo(
     () =>
@@ -141,6 +219,14 @@ export default function PayPeriodsPage() {
 
   // ── Account group order: savings → rent → checking (↳ cashApp ↳ spending) → openbank
   const GROUP_ORDER = ['savings', 'rentFund', 'checking', 'openbank'] as const
+
+const FUNDING_SOURCE_OPTIONS = [
+  { id: 'savings',  label: 'BofA Savings' },
+  { id: 'checking', label: 'BofA Checkings' },
+  { id: 'spending', label: 'Spending Money' },
+  { id: 'openbank', label: 'OpenBank' },
+  { id: 'rent',     label: 'Rent Money' },
+] as const
   const byAccount = (id: string) => sortedExpenses.filter((e) => e.sourceAccount === id)
 
   const renderExpRow = (expense: RecurringExpense) => {
@@ -375,10 +461,87 @@ export default function PayPeriodsPage() {
                   <span className="h-2 w-2 rounded-full bg-amber-400" /> CashApp
                 </p>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span>Loaded from Checkings</span>
-                    <span className="text-slate-600">${recurringTotals.fromCashApp.toLocaleString()}</span>
+
+                  {/* Editable load amount */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Loaded from Checkings</span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={0}
+                        value={cashAppAmount}
+                        onChange={(e) => setCashAppPlan({ override: Number(e.target.value) === cashAppComputed ? null : Number(e.target.value), source: null, confirmed: false })}
+                        className={`w-20 rounded-lg border px-2 py-1 text-right text-sm font-medium focus:outline-none ${cashAppDelta !== 0 ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-slate-200 bg-white text-slate-700'}`}
+                      />
+                      {cashAppPlan.override !== null && (
+                        <button
+                          onClick={() => setCashAppPlan({ override: null, source: null, confirmed: false })}
+                          className="rounded-full p-1 text-slate-300 hover:text-red-400 transition-colors"
+                          title="Reset to computed"
+                        >✕</button>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Delta adjustment planner */}
+                  {cashAppDelta > 0 && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2.5">
+                      <p className="text-xs font-semibold text-amber-900">
+                        You're loading ${cashAppDelta} more than planned. Where does it come from?
+                      </p>
+                      <div className="space-y-1.5">
+                        {FUNDING_SOURCE_OPTIONS.map((src) => {
+                          const { text, warning, requiresConfirm } = getCashAppSourceConsequence(src.id, cashAppDelta)
+                          const isSelected = cashAppPlan.source === src.id
+                          const isConfirmed = isSelected && cashAppPlan.confirmed
+                          const needsConfirm = isSelected && requiresConfirm && !isConfirmed
+                          return (
+                            <div key={src.id}>
+                              <button
+                                type="button"
+                                onClick={() => setCashAppPlan((s) => ({ ...s, source: src.id, confirmed: false }))}
+                                className={`w-full rounded-xl border p-2.5 text-left text-xs transition-all ${
+                                  isSelected
+                                    ? warning
+                                      ? 'border-red-300 bg-red-50'
+                                      : 'border-emerald-300 bg-emerald-50'
+                                    : 'border-slate-200 bg-white hover:border-slate-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className={`h-3 w-3 shrink-0 rounded-full border-2 ${isSelected ? (warning ? 'border-red-400 bg-red-400' : 'border-emerald-500 bg-emerald-500') : 'border-slate-300'}`} />
+                                  <span className="font-semibold text-slate-900">{src.label}</span>
+                                </div>
+                                <p className={`mt-1 pl-5 leading-snug ${warning ? 'text-red-700' : 'text-slate-500'}`}>{text}</p>
+                              </button>
+                              {needsConfirm && (
+                                <div className="mt-1.5 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                                  <p className="flex-1 text-xs text-red-800">Heads up: this puts your {src.label} below the recommended amount.</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setCashAppPlan((s) => ({ ...s, confirmed: true }))}
+                                    className="shrink-0 rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700"
+                                  >
+                                    Confirm anyway
+                                  </button>
+                                </div>
+                              )}
+                              {isConfirmed && (
+                                <p className="mt-1 pl-2 text-xs font-medium text-emerald-700">✓ Plan set — {src.label} covers the extra ${cashAppDelta}.</p>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {cashAppDelta < 0 && (
+                    <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                      Surplus ${Math.abs(cashAppDelta)} stays in BofA Checkings.
+                    </p>
+                  )}
+
                   <div className="flex items-center justify-between text-slate-400">
                     <span className="flex items-center gap-1"><span className="text-xs">↳</span> Groceries</span>
                     <span className="text-slate-600">−${recurringTotals.groceries.toLocaleString()}</span>
