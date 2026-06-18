@@ -172,6 +172,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       dashboardHeading,
       dashboardButtonText,
       defaultPayPeriodLabel,
+      defaultPaycheckAmount,
       currency,
       selectedPayDate,
       forecastHorizon,
