@@ -72,14 +72,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </aside>
 
           <main className="space-y-3">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
               <div>
                 <p className="text-sm text-slate-500">Modern financial planning</p>
                 <h2 className="text-3xl font-semibold text-slate-950">Your future cashflow at a glance</h2>
               </div>
-              <button className="inline-flex items-center justify-center rounded-3xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-slate-900/15 transition hover:bg-slate-800">
-                New allocation
-              </button>
             </div>
             {children}
           </main>
