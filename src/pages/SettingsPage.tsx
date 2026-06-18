@@ -1,4 +1,4 @@
-import { ChangeEvent, useMemo, useState } from 'react'
+import { ChangeEvent, useMemo, useRef, useState } from 'react'
 import Card from '../components/Card'
 import Section from '../components/Section'
 import { useAppState } from '../state'
@@ -28,6 +28,16 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function formatDateDisplay(dateString: string) {
   return new Date(dateString).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function formatSaveTime(dateString: string | null) {
+  if (!dateString) return 'Not saved yet'
+  return new Date(dateString).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  })
 }
 
 type CalendarCell = { day: number | null; date: Date | null }
@@ -93,11 +103,18 @@ export default function SettingsPage() {
     selectedPayDate,
     forecastHorizon,
     notifications,
+    saveStatus,
+    lastSavedAt,
+    remotePersistenceEnabled,
     setDefaultPayPeriodLabel,
     setDefaultPaycheckAmount,
     setSelectedPayDate,
     setForecastHorizon,
-    setNotifications
+    setNotifications,
+    syncNow,
+    exportBackup,
+    importBackup,
+    resetToDefaults
   } = useAppState()
 
   const [editMode, setEditMode] = useState(false)
@@ -106,6 +123,8 @@ export default function SettingsPage() {
   const [draftHorizon, setDraftHorizon] = useState(forecastHorizon)
   const [draftNotifications, setDraftNotifications] = useState(notifications)
   const [draftPaycheckAmount, setDraftPaycheckAmount] = useState<number>(defaultPaycheckAmount)
+  const [importMessage, setImportMessage] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const monthGrid = useMemo(() => buildMonthGrid(draftPayDate), [draftPayDate])
   const highlightedDates = useMemo(() => getPaydayHighlights(draftPayDate, draftPayPeriod), [draftPayDate, draftPayPeriod])
@@ -138,6 +157,51 @@ export default function SettingsPage() {
     }
     setDraftPayDate(date.toISOString().slice(0, 10))
   }
+
+  const handleExportBackup = () => {
+    const blob = new Blob([exportBackup()], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'budget-os-backup.json'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const contents = await file.text()
+      const result = importBackup(contents)
+      setImportMessage(result.ok ? 'Backup imported. Your saved data has been restored.' : result.error)
+    } catch {
+      setImportMessage('Could not read that backup file.')
+    } finally {
+      event.target.value = ''
+    }
+  }
+
+  const saveStatusTone =
+    saveStatus === 'saved'
+      ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+      : saveStatus === 'saving'
+        ? 'text-amber-700 bg-amber-50 border-amber-200'
+        : saveStatus === 'error'
+          ? 'text-red-700 bg-red-50 border-red-200'
+          : 'text-slate-700 bg-slate-50 border-slate-200'
+
+  const saveStatusLabel =
+    saveStatus === 'saved'
+      ? 'Saved to cloud'
+      : saveStatus === 'saving'
+        ? 'Saving changes'
+        : saveStatus === 'error'
+          ? 'Cloud sync failed'
+          : remotePersistenceEnabled
+            ? 'Ready to sync'
+            : 'Saving locally only'
 
   return (
     <div className={`space-y-5 transition-colors ${editMode ? 'rounded-[1.75rem] bg-slate-50/50 p-5' : ''}`}>
@@ -289,6 +353,59 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-6">
+            <Card title="Saved data" subtitle="Keep your budgeting changes across refreshes and deployments.">
+              <div className="space-y-4 text-sm text-slate-600">
+                <div className={`rounded-2xl border px-4 py-3 ${saveStatusTone}`}>
+                  <p className="text-sm font-semibold">{saveStatusLabel}</p>
+                  <p className="mt-1 text-xs opacity-80">
+                    {remotePersistenceEnabled ? 'Cloud persistence is enabled.' : 'Supabase is not configured yet, so this browser is the current source of truth.'}
+                  </p>
+                  <p className="mt-1 text-xs opacity-80">Last saved: {formatSaveTime(lastSavedAt)}</p>
+                </div>
+
+                <div className="grid gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void syncNow()}
+                    className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                  >
+                    Sync now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportBackup}
+                    className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                  >
+                    Export backup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                  >
+                    Import backup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void resetToDefaults()}
+                    className="rounded-2xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+                  >
+                    Reset to sample data
+                  </button>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json"
+                  onChange={handleImportFile}
+                  className="hidden"
+                />
+
+                {importMessage ? <p className="text-xs text-slate-500">{importMessage}</p> : null}
+              </div>
+            </Card>
+
             <Card title="Notifications" subtitle="Receive alerts for upcoming pay periods and low buffers.">
               <div className="space-y-4 text-sm text-slate-600">
                 <label className="flex items-center gap-3">

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Account,
   PayPeriod,
@@ -16,6 +16,17 @@ import {
   calculateSafetyBuffer
 } from './calculations'
 import { getRecurringExpenseTotals, getUpcomingOccurrences } from './recurring'
+import {
+  clearLocalPersistedState,
+  createDefaultPersistedState,
+  isRemotePersistenceConfigured,
+  loadLocalPersistedState,
+  loadRemotePersistedState,
+  mergePersistedState,
+  saveLocalPersistedState,
+  saveRemotePersistedState,
+  type PersistedAppStateData
+} from './services/appStatePersistence'
 
 export interface AppState {
   accounts: Account[]
@@ -35,6 +46,9 @@ export interface AppState {
   selectedPayDate: string
   forecastHorizon: number
   notifications: { email: boolean; push: boolean }
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'local-only'
+  lastSavedAt: string | null
+  remotePersistenceEnabled: boolean
   setAccounts: (accounts: Account[]) => void
   setPayPeriods: (payPeriods: PayPeriod[]) => void
   setRecurringExpenses: (expenses: RecurringExpense[] | ((current: RecurringExpense[]) => RecurringExpense[])) => void
@@ -57,31 +71,79 @@ export interface AppState {
   getCashAppTransfer: (totals: ReturnType<typeof getRecurringExpenseTotals>) => number
   getRecurringTotals: (periodIndex: number) => ReturnType<typeof getRecurringExpenseTotals>
   getUpcomingRecurring: (periodIndex: number, count: number) => ReturnType<typeof getUpcomingOccurrences>
+  syncNow: () => Promise<void>
+  exportBackup: () => string
+  importBackup: (raw: string) => { ok: true } | { ok: false; error: string }
+  resetToDefaults: () => Promise<void>
 }
 
 const AppStateContext = createContext<AppState | undefined>(undefined)
 
+const initialPersistedState = loadLocalPersistedState() ?? createDefaultPersistedState()
+
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [accounts, setAccounts] = useState<Account[]>(sampleAccounts)
-  const [payPeriods, setPayPeriods] = useState<PayPeriod[]>(samplePayPeriods)
-  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>(sampleRecurringExpenses)
+  const [accounts, setAccounts] = useState<Account[]>(initialPersistedState.accounts)
+  const [payPeriods, setPayPeriods] = useState<PayPeriod[]>(initialPersistedState.payPeriods)
+  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>(initialPersistedState.recurringExpenses)
   const [forecastPoints] = useState<ForecastPoint[]>(sampleForecastPoints)
-  const [transactions, rawSetTransactions] = useState<TransactionRecord[]>([])
-  const [selectedPayPeriodId, setSelectedPayPeriodId] = useState<number>(1)
-  const [selectedForecastPointId, setSelectedForecastPointId] = useState<number>(4)
-  const [extraMoney, setExtraMoney] = useState<number>(520)
-  const [selectedMoverDestination, setSelectedMoverDestination] = useState<Account['id']>('checking')
-  const [dashboardHeading, setDashboardHeading] = useState<string>('Your future cashflow at a glance')
-  const [dashboardButtonText, setDashboardButtonText] = useState<string>('New allocation')
-  const [defaultPayPeriodLabel, setDefaultPayPeriodLabel] = useState<string>('Biweekly')
-  const [defaultPaycheckAmount, setDefaultPaycheckAmount] = useState<number>(samplePayPeriods[0]?.payAmount ?? 0)
-  const [currency, setCurrency] = useState<string>('USD')
-  const [selectedPayDate, setSelectedPayDate] = useState<string>('2026-06-28')
-  const [forecastHorizon, setForecastHorizon] = useState<number>(30)
-  const [notifications, setNotifications] = useState<{ email: boolean; push: boolean }>({
-    email: false,
-    push: true
+  const [transactions, rawSetTransactions] = useState<TransactionRecord[]>(initialPersistedState.transactions)
+  const [selectedPayPeriodId, setSelectedPayPeriodId] = useState<number>(initialPersistedState.selectedPayPeriodId)
+  const [selectedForecastPointId, setSelectedForecastPointId] = useState<number>(initialPersistedState.selectedForecastPointId)
+  const [extraMoney, setExtraMoney] = useState<number>(initialPersistedState.extraMoney)
+  const [selectedMoverDestination, setSelectedMoverDestination] = useState<Account['id']>(initialPersistedState.selectedMoverDestination)
+  const [dashboardHeading, setDashboardHeading] = useState<string>(initialPersistedState.dashboardHeading)
+  const [dashboardButtonText, setDashboardButtonText] = useState<string>(initialPersistedState.dashboardButtonText)
+  const [defaultPayPeriodLabel, setDefaultPayPeriodLabel] = useState<string>(initialPersistedState.defaultPayPeriodLabel)
+  const [defaultPaycheckAmount, setDefaultPaycheckAmount] = useState<number>(initialPersistedState.defaultPaycheckAmount)
+  const [currency, setCurrency] = useState<string>(initialPersistedState.currency)
+  const [selectedPayDate, setSelectedPayDate] = useState<string>(initialPersistedState.selectedPayDate)
+  const [forecastHorizon, setForecastHorizon] = useState<number>(initialPersistedState.forecastHorizon)
+  const [notifications, setNotifications] = useState<{ email: boolean; push: boolean }>(initialPersistedState.notifications)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'local-only'>('idle')
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
+
+  const remotePersistenceEnabled = isRemotePersistenceConfigured()
+  const hasHydratedRef = useRef(false)
+  const saveTimeoutRef = useRef<number | null>(null)
+
+  const buildPersistedState = (): PersistedAppStateData => ({
+    schemaVersion: 1,
+    accounts,
+    payPeriods,
+    recurringExpenses,
+    transactions,
+    selectedPayPeriodId,
+    selectedForecastPointId,
+    extraMoney,
+    selectedMoverDestination,
+    dashboardHeading,
+    dashboardButtonText,
+    defaultPayPeriodLabel,
+    defaultPaycheckAmount,
+    currency,
+    selectedPayDate,
+    forecastHorizon,
+    notifications
   })
+
+  const applyPersistedState = (state: PersistedAppStateData) => {
+    setAccounts(state.accounts)
+    setPayPeriods(state.payPeriods)
+    setRecurringExpenses(state.recurringExpenses)
+    rawSetTransactions(state.transactions)
+    setSelectedPayPeriodId(state.selectedPayPeriodId)
+    setSelectedForecastPointId(state.selectedForecastPointId)
+    setExtraMoney(state.extraMoney)
+    setSelectedMoverDestination(state.selectedMoverDestination)
+    setDashboardHeading(state.dashboardHeading)
+    setDashboardButtonText(state.dashboardButtonText)
+    setDefaultPayPeriodLabel(state.defaultPayPeriodLabel)
+    setDefaultPaycheckAmount(state.defaultPaycheckAmount)
+    setCurrency(state.currency)
+    setSelectedPayDate(state.selectedPayDate)
+    setForecastHorizon(state.forecastHorizon)
+    setNotifications(state.notifications)
+  }
 
   // Wrapper to handle both value and function patterns
   const wrappedSetRecurringExpenses = (expenses: RecurringExpense[] | ((current: RecurringExpense[]) => RecurringExpense[])) => {
@@ -115,6 +177,144 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const getAvailableSpending = (leftover: number) => calculateAvailableSpending(leftover)
   const getCashAppTransfer = (totals: ReturnType<typeof getRecurringExpenseTotals>) => totals.fromCashApp
 
+  const syncNow = async () => {
+    const snapshot = buildPersistedState()
+    saveLocalPersistedState(snapshot)
+
+    if (!remotePersistenceEnabled) {
+      setSaveStatus('local-only')
+      setLastSavedAt(new Date().toISOString())
+      return
+    }
+
+    setSaveStatus('saving')
+    try {
+      const updatedAt = await saveRemotePersistedState(snapshot)
+      setSaveStatus('saved')
+      setLastSavedAt(updatedAt ?? new Date().toISOString())
+    } catch {
+      setSaveStatus('error')
+    }
+  }
+
+  const exportBackup = () => JSON.stringify(buildPersistedState(), null, 2)
+
+  const importBackup = (raw: string) => {
+    try {
+      const nextState = mergePersistedState(JSON.parse(raw))
+      applyPersistedState(nextState)
+      saveLocalPersistedState(nextState)
+      setSaveStatus(remotePersistenceEnabled ? 'saving' : 'local-only')
+      return { ok: true } as const
+    } catch {
+      return { ok: false as const, error: 'Backup file is not valid JSON for this app.' }
+    }
+  }
+
+  const resetToDefaults = async () => {
+    const defaults = createDefaultPersistedState()
+    applyPersistedState(defaults)
+    clearLocalPersistedState()
+    saveLocalPersistedState(defaults)
+    if (!remotePersistenceEnabled) {
+      setSaveStatus('local-only')
+      setLastSavedAt(new Date().toISOString())
+      return
+    }
+    await syncNow()
+  }
+
+  useEffect(() => {
+    let isCancelled = false
+
+    const hydrate = async () => {
+      if (!remotePersistenceEnabled) {
+        hasHydratedRef.current = true
+        setSaveStatus('local-only')
+        return
+      }
+
+      try {
+        const remoteState = await loadRemotePersistedState()
+        if (!remoteState || isCancelled) {
+          hasHydratedRef.current = true
+          return
+        }
+
+        applyPersistedState(remoteState.data)
+        saveLocalPersistedState(remoteState.data)
+        setLastSavedAt(remoteState.updatedAt)
+        setSaveStatus('saved')
+      } catch {
+        if (!isCancelled) {
+          setSaveStatus('error')
+        }
+      } finally {
+        if (!isCancelled) {
+          hasHydratedRef.current = true
+        }
+      }
+    }
+
+    hydrate()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [remotePersistenceEnabled])
+
+  useEffect(() => {
+    if (!hasHydratedRef.current) return
+
+    const snapshot = buildPersistedState()
+    saveLocalPersistedState(snapshot)
+
+    if (!remotePersistenceEnabled) {
+      setSaveStatus('local-only')
+      setLastSavedAt(new Date().toISOString())
+      return
+    }
+
+    setSaveStatus('saving')
+    if (saveTimeoutRef.current != null) {
+      window.clearTimeout(saveTimeoutRef.current)
+    }
+
+    saveTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const updatedAt = await saveRemotePersistedState(snapshot)
+        setSaveStatus('saved')
+        setLastSavedAt(updatedAt ?? new Date().toISOString())
+      } catch {
+        setSaveStatus('error')
+      }
+    }, 700)
+
+    return () => {
+      if (saveTimeoutRef.current != null) {
+        window.clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [
+    accounts,
+    payPeriods,
+    recurringExpenses,
+    transactions,
+    selectedPayPeriodId,
+    selectedForecastPointId,
+    extraMoney,
+    selectedMoverDestination,
+    dashboardHeading,
+    dashboardButtonText,
+    defaultPayPeriodLabel,
+    defaultPaycheckAmount,
+    currency,
+    selectedPayDate,
+    forecastHorizon,
+    notifications,
+    remotePersistenceEnabled
+  ])
+
   const value = useMemo(
     () => ({
       accounts,
@@ -134,6 +334,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       selectedPayDate,
       forecastHorizon,
       notifications,
+      saveStatus,
+      lastSavedAt,
+      remotePersistenceEnabled,
       setAccounts,
       setPayPeriods,
       setRecurringExpenses: wrappedSetRecurringExpenses,
@@ -155,7 +358,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       getSafetyBuffer,
       getCashAppTransfer,
       getRecurringTotals,
-      getUpcomingRecurring
+      getUpcomingRecurring,
+      syncNow,
+      exportBackup,
+      importBackup,
+      resetToDefaults
     }),
     [
       accounts,
@@ -174,7 +381,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       currency,
       selectedPayDate,
       forecastHorizon,
-      notifications
+      notifications,
+      saveStatus,
+      lastSavedAt,
+      remotePersistenceEnabled
     ]
   )
 
