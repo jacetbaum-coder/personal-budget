@@ -253,7 +253,7 @@ export default function AccountsPage() {
                   </div>
                   <div>
                     <label className="mb-1 block text-xs text-slate-500">Amount ($)</label>
-                    <input type="number" className={inputCls} value={newExpense.amount}
+                    <input type="number" className={inputCls} value={newExpense.amount === 0 ? '' : newExpense.amount}
                       onChange={(e) => setNewExpense((p) => ({ ...p, amount: Number(e.target.value) }))} />
                   </div>
                   <div>
@@ -308,7 +308,7 @@ export default function AccountsPage() {
                       </div>
                       <div>
                         <label className="mb-1 block text-xs text-slate-500">Amount ($)</label>
-                        <input type="number" className={inputCls} value={expense.amount}
+                        <input type="number" className={inputCls} value={expense.amount === 0 ? '' : expense.amount}
                           onChange={(e) => updateDraftExpense(expense.id, { amount: Number(e.target.value) })} />
                       </div>
                       <div>

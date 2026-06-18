@@ -403,7 +403,7 @@ function getExpFundingSources(
             </div>
             <div>
               <label className="mb-1 block text-xs text-slate-500">Amount ($)</label>
-              <input type="number" className={inputCls} value={draftExp.amount}
+              <input type="number" className={inputCls} value={draftExp.amount === 0 ? '' : draftExp.amount}
                 onChange={(e) => {
                   setDraftExp((p) => p ? { ...p, amount: Number(e.target.value) } : p)
                   setExpFundingPlan({ source: null, confirmed: false })
@@ -766,7 +766,7 @@ function getExpFundingSources(
                   </div>
                   <div>
                     <label className="mb-1 block text-xs text-slate-500">Amount ($)</label>
-                    <input type="number" className={inputCls} value={newExp.amount}
+                    <input type="number" className={inputCls} value={newExp.amount === 0 ? '' : newExp.amount}
                       onChange={(e) => {
                         setNewExp((p) => ({ ...p, amount: Number(e.target.value) }))
                         setNewExpFundingPlan({ source: null, confirmed: false })
