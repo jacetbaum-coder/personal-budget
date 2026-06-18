@@ -55,9 +55,9 @@ export default function AccountsPage() {
   const displayedTotalBalance = editMode ? draftTotalBalance : totalBalance
 
   return (
-    <div className={`space-y-6 transition-colors ${editMode ? 'rounded-[2rem] bg-slate-50/60 p-6' : ''}`}>
-      <div className={`rounded-3xl border border-slate-200/80 bg-white/95 p-6 shadow-sm shadow-slate-200/60 transition ${editMode ? 'ring-2 ring-slate-300/70' : ''}`}>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className={`space-y-5 transition-colors ${editMode ? 'rounded-[1.75rem] bg-slate-50/50 p-5' : ''}`}>
+      <div className={`rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm shadow-slate-200/50 transition ${editMode ? 'ring-2 ring-slate-300/70' : ''}`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold text-slate-900">Accounts</h1>
             <p className="text-sm text-slate-500">Track balances and account types for your forecasting model.</p>
@@ -99,13 +99,13 @@ export default function AccountsPage() {
         title="Accounts"
         description={editMode ? 'Edit balances and recurring expenses in a dedicated edit screen.' : 'Quick overview of balances and recurring spending.'}
       >
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-6">
+        <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-5">
             <Card title="Account summary" subtitle="All balances and liquidity.">
-              <div className="space-y-4 text-sm text-slate-600">
+              <div className="space-y-3 text-sm text-slate-600">
                 <div className="grid gap-3 sm:grid-cols-3">
                   {displayedAccounts.map((account) => (
-                    <div key={account.id} className="rounded-3xl bg-slate-50 p-4">
+                    <div key={account.id} className="rounded-2xl bg-slate-50 p-3">
                       <p className="text-sm font-semibold text-slate-900">{account.name}</p>
                       {editMode ? (
                         <input

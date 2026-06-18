@@ -135,9 +135,9 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className={`space-y-6 transition-colors ${editMode ? 'rounded-[2rem] bg-slate-50/60 p-6' : ''}`}>
-      <div className={`rounded-3xl border border-slate-200/80 bg-white/95 p-6 shadow-sm shadow-slate-200/60 transition ${editMode ? 'ring-2 ring-slate-300/70' : ''}`}>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className={`space-y-5 transition-colors ${editMode ? 'rounded-[1.75rem] bg-slate-50/50 p-5' : ''}`}>
+      <div className={`rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm shadow-slate-200/50 transition ${editMode ? 'ring-2 ring-slate-300/70' : ''}`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
             <p className="text-sm text-slate-500">Configure your forecasting preferences and allocation rules.</p>
@@ -176,8 +176,8 @@ export default function SettingsPage() {
       </div>
 
       <Section title="Settings" description={editMode ? 'Edit your pay period preferences and notification settings.' : 'Review forecasting preferences and notification rules.'}>
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-6">
+        <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-5">
             <Card title="Preferences">
               <div className="space-y-6 text-sm text-slate-600">
                 <label className="block">

@@ -16,8 +16,9 @@ const secondaryNavItems = [
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">      <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
-        <header className="flex items-center justify-between rounded-[2rem] border border-slate-200/80 bg-white/80 p-4 shadow-sm shadow-slate-200/50 backdrop-blur">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="mx-auto flex min-h-screen max-w-[1200px] flex-col gap-3 px-4 py-4 sm:px-5 lg:px-6">
+        <header className="flex items-center justify-between rounded-[1.5rem] border border-slate-200/80 bg-white/90 p-3 shadow-sm shadow-slate-200/40 backdrop-blur">
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Budget OS</p>
             <h1 className="text-2xl font-semibold text-slate-900">Paycheck allocation & forecasting</h1>
@@ -27,8 +28,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <div className="grid flex-1 gap-6 xl:grid-cols-[280px_1fr]">
-          <aside className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-5 shadow-sm shadow-slate-200/60 backdrop-blur">
+        <div className="grid flex-1 gap-3 xl:grid-cols-[200px_1fr]">
+          <aside className="rounded-[1.5rem] border border-slate-200/80 bg-white/90 p-3 shadow-sm shadow-slate-200/40 backdrop-blur">
             <div className="mb-6 space-y-3">
               <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-slate-100 text-2xl font-semibold text-slate-700 shadow-inner shadow-slate-200/70">B</div>
               <div>
@@ -43,7 +44,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   to={item.path}
                   end={item.path === '/'}
                   className={({ isActive }) =>
-                    `block rounded-3xl px-4 py-3 text-sm font-medium transition ${
+                    `block rounded-2xl px-3 py-2 text-sm font-medium transition ${
                       isActive
                         ? 'bg-slate-100 text-slate-900 shadow-sm shadow-slate-200/50'
                         : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
@@ -54,7 +55,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </NavLink>
               ))}
             </nav>
-            <div className="mt-6 rounded-3xl border border-slate-200/80 bg-slate-50 p-4 text-sm text-slate-600">
+            <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50 p-3 text-sm text-slate-600">
               <p className="mb-3 text-xs uppercase tracking-[0.24em] text-slate-500">More tools</p>
               <div className="space-y-2">
                 {secondaryNavItems.map((item) => (
@@ -70,13 +71,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </aside>
 
-          <main className="space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <main className="space-y-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-sm text-slate-500">Modern financial planning</p>
                 <h2 className="text-3xl font-semibold text-slate-950">Your future cashflow at a glance</h2>
               </div>
-              <button className="inline-flex items-center justify-center rounded-3xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition hover:bg-slate-800">
+              <button className="inline-flex items-center justify-center rounded-3xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-slate-900/15 transition hover:bg-slate-800">
                 New allocation
               </button>
             </div>
