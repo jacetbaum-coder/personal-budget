@@ -43,7 +43,7 @@ export default function ForecastPage() {
 
   const projectedLeftover = getProjectedLeftover(selectedPeriod, recurringTotals)
   const cashAppTransfer = calculateCashAppTransfer(recurringTotals.groceries, recurringTotals.bus)
-  const safetyBuffer = getSafetyBuffer(projectedLeftover)
+  const safetyBuffer = getSafetyBuffer()
   const availableSpending = getAvailableSpending(projectedLeftover)
 
   const adjustedBalances = useMemo(

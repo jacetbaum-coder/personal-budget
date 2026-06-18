@@ -53,7 +53,7 @@ export interface AppState {
   setNotifications: (notifications: { email: boolean; push: boolean }) => void
   getProjectedLeftover: (payPeriod: PayPeriod, totals: ReturnType<typeof getRecurringExpenseTotals>) => number
   getAvailableSpending: (leftover: number) => number
-  getSafetyBuffer: (leftover: number) => number
+  getSafetyBuffer: () => number
   getCashAppTransfer: (totals: ReturnType<typeof getRecurringExpenseTotals>) => number
   getRecurringTotals: (periodIndex: number) => ReturnType<typeof getRecurringExpenseTotals>
   getUpcomingRecurring: (periodIndex: number, count: number) => ReturnType<typeof getUpcomingOccurrences>
@@ -111,8 +111,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       totals.fromSavings
     )
 
-  const getSafetyBuffer = (leftover: number) => calculateSafetyBuffer(leftover)
-  const getAvailableSpending = (leftover: number) => calculateAvailableSpending(leftover, calculateSafetyBuffer(leftover))
+  const getSafetyBuffer = () => calculateSafetyBuffer()
+  const getAvailableSpending = (leftover: number) => calculateAvailableSpending(leftover)
   const getCashAppTransfer = (totals: ReturnType<typeof getRecurringExpenseTotals>) => totals.fromCashApp
 
   const value = useMemo(

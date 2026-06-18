@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import Card from '../components/Card'
 import Section from '../components/Section'
 import Sparkline from '../components/Sparkline'
+import { CHECKING_BUFFER, SAVINGS_BUFFER } from '../calculations'
 import { useAppState } from '../state'
 import { isRecurringExpenseDue } from '../recurring'
 
@@ -52,7 +53,7 @@ export default function DashboardPage() {
   const recurringTotals = getRecurringTotals(periodIndex)
   const projectedLeftover = getProjectedLeftover(selectedPeriod, recurringTotals)
   const cashAppTransfer = getCashAppTransfer(recurringTotals)
-  const safetyBuffer = getSafetyBuffer(projectedLeftover)
+  const safetyBuffer = getSafetyBuffer()
   const availableSpending = getAvailableSpending(projectedLeftover)
 
   const dueSavingsExpenses = useMemo(
@@ -85,6 +86,15 @@ export default function DashboardPage() {
   const badge = paydayBadge(selectedPeriod.payDate)
   const isToday = daysUntilPayday(selectedPeriod.payDate) === 0
 
+  // Step 1 auto-done on/after payday; steps 2-6 user-controlled
+  const autoStep1 = isToday || daysUntilPayday(selectedPeriod.payDate) < 0
+  const [doneSteps, setDoneSteps] = useState<Set<number>>(() => autoStep1 ? new Set([1]) : new Set())
+  const toggleStep = (n: number) => setDoneSteps((prev) => {
+    const next = new Set(prev)
+    next.has(n) ? next.delete(n) : next.add(n)
+    return next
+  })
+
   return (
     <div className="space-y-6">
       {/* Hero bar */}
@@ -103,18 +113,18 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         {/* Checklist — primary job */}
-        <Card title="Payday Checklist" subtitle={`Steps to execute for the ${selectedPeriod.label} period.`}>
-          <div className="space-y-3 text-sm leading-6 text-slate-700">
-            <CheckStep n={1} done={isToday || daysUntilPayday(selectedPeriod.payDate) < 0}>
+        <Card title="Payday Checklist" subtitle={`Steps to execute for the ${selectedPeriod.label} period. Click any step to mark it done.`}>
+          <div className="space-y-2 text-sm leading-6 text-slate-700">
+            <CheckStep n={1} done={doneSteps.has(1)} onToggle={() => toggleStep(1)}>
               Paycheck (${selectedPeriod.payAmount.toLocaleString()}) lands in BofA Savings.
             </CheckStep>
-            <CheckStep n={2}>
+            <CheckStep n={2} done={doneSteps.has(2)} onToggle={() => toggleStep(2)}>
               Transfer ${selectedPeriod.transfers.rent.toLocaleString()} → BofA Rent Holdings.
             </CheckStep>
-            <CheckStep n={3}>
+            <CheckStep n={3} done={doneSteps.has(3)} onToggle={() => toggleStep(3)}>
               Transfer ${selectedPeriod.transfers.openbank.toLocaleString()} → OpenBank.
             </CheckStep>
-            <CheckStep n={4}>
+            <CheckStep n={4} done={doneSteps.has(4)} onToggle={() => toggleStep(4)}>
               Pay savings expenses due this period:
               <ul className="mt-2 space-y-1.5 pl-4">
                 {dueSavingsExpenses.length > 0 ? (
@@ -128,13 +138,13 @@ export default function DashboardPage() {
                 )}
               </ul>
             </CheckStep>
-            <CheckStep n={5}>
+            <CheckStep n={5} done={doneSteps.has(5)} onToggle={() => toggleStep(5)}>
               Transfer ${transferToCheckings.toLocaleString()} → BofA Checkings.
-              <span className="ml-1 text-xs text-slate-400">(subscriptions + available spending)</span>
+              <span className="ml-1 text-xs opacity-60">(subscriptions + available spending)</span>
             </CheckStep>
-            <CheckStep n={6}>
+            <CheckStep n={6} done={doneSteps.has(6)} onToggle={() => toggleStep(6)}>
               From Checkings, load ${cashAppTransfer.toLocaleString()} → CashApp.
-              <span className="ml-1 text-xs text-slate-400">${recurringTotals.groceries} groceries + ${recurringTotals.bus} bus</span>
+              <span className="ml-1 text-xs opacity-60">${recurringTotals.groceries} groceries + ${recurringTotals.bus} bus</span>
             </CheckStep>
 
             {(overage > 0 || negativeTransfer) && (
@@ -156,7 +166,8 @@ export default function DashboardPage() {
               <SummaryRow label="Savings expenses" value={`−$${savingsExpensesTotal.toLocaleString()}`} dim />
               <div className="my-1 border-t border-slate-100" />
               <SummaryRow label="Projected leftover" value={`$${projectedLeftover.toLocaleString()}`} bold />
-              <SummaryRow label="Safety buffer" value={`−$${safetyBuffer.toLocaleString()}`} dim />
+              <SummaryRow label="Buffer — BofA Savings" value={`−$${SAVINGS_BUFFER}`} dim />
+              <SummaryRow label="Buffer — BofA Checkings" value={`−$${CHECKING_BUFFER}`} dim />
               <SummaryRow label="Available to spend" value={`$${availableSpending.toLocaleString()}`} bold highlight />
               <div className="my-1 border-t border-slate-100" />
               <SummaryRow label="Transfer to Checkings" value={`$${transferToCheckings.toLocaleString()}`} />
@@ -188,13 +199,20 @@ export default function DashboardPage() {
   )
 }
 
-function CheckStep({ n, done = false, children }: { n: number; done?: boolean; children: React.ReactNode }) {
+function CheckStep({ n, done = false, onToggle, children }: { n: number; done?: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
-    <div className={`rounded-2xl p-4 ${done ? 'bg-emerald-50 text-emerald-900' : 'bg-slate-50 text-slate-900'}`}>
-      <p className="font-semibold">
-        {done ? '✓' : n + '.'} {children}
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`w-full rounded-2xl p-4 text-left transition-colors ${done ? 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100' : 'bg-slate-50 text-slate-900 hover:bg-slate-100'}`}
+    >
+      <p className="font-semibold flex items-start gap-2">
+        <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? 'bg-emerald-500 text-white' : 'border-2 border-slate-300 text-slate-400'}`}>
+          {done ? '✓' : n}
+        </span>
+        <span>{children}</span>
       </p>
-    </div>
+    </button>
   )
 }
 

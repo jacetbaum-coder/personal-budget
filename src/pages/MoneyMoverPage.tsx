@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import Card from '../components/Card'
 import InfoRow from '../components/InfoRow'
 import Section from '../components/Section'
-import { calculateSafetyBuffer } from '../calculations'
+import { calculateCashAppTransfer } from '../calculations'
 import { useAppState } from '../state'
 
 export default function MoneyMoverPage() {
@@ -111,8 +111,6 @@ function availableSpendingAdjustment(balance: number, extra: number) {
   return Math.round((balance + extra) * 0.18)
 }
 
-function safetyBufferAdjustment(balance: number, extra: number) {
-  const before = calculateSafetyBuffer(balance)
-  const after = calculateSafetyBuffer(balance + extra)
-  return after - before
+function safetyBufferAdjustment(_balance: number, _extra: number) {
+  return 0 // buffers are now fixed; moving money between accounts doesn't change them
 }

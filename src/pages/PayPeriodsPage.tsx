@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Card from '../components/Card'
 import InfoRow from '../components/InfoRow'
 import Section from '../components/Section'
 import {
   calculateAvailableSpending,
   calculateProjectedLeftover,
-  calculateSafetyBuffer
+  calculateSafetyBuffer,
+  SAVINGS_BUFFER,
+  CHECKING_BUFFER,
 } from '../calculations'
 import type { ExpenseCategory, PayPeriod, RecurringExpense } from '../models'
 import { accountColorOptions, expenseCategoryLabels } from '../models'
@@ -81,8 +83,8 @@ export default function PayPeriodsPage() {
     selectedPeriod.transfers.openbank,
     recurringTotals.fromSavings
   )
-  const safetyBuffer = calculateSafetyBuffer(projectedLeftover)
-  const availableSpending = calculateAvailableSpending(projectedLeftover, safetyBuffer)
+  const safetyBuffer = calculateSafetyBuffer()
+  const availableSpending = calculateAvailableSpending(projectedLeftover)
 
   // ── Period-edit helpers ────────────────────────────────────────────────────
   const updateDraft = (id: number, patch: Partial<PayPeriod>) =>
@@ -216,6 +218,25 @@ export default function PayPeriodsPage() {
     )
   }
 
+  // ── Drag-to-resize state ────────────────────────────────────────────────────
+  const [leftPct, setLeftPct] = useState(42)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const isDragging = useRef(false)
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDragging.current = true
+    const onMove = (ev: MouseEvent) => {
+      if (!isDragging.current || !containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      const pct = Math.min(70, Math.max(25, ((ev.clientX - rect.left) / rect.width) * 100))
+      setLeftPct(Math.round(pct))
+    }
+    const onUp = () => { isDragging.current = false; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [])
+
   return (
     <div className="space-y-6">
       <Section title="Pay Periods" description="What does my money look like across all upcoming periods?">
@@ -225,7 +246,7 @@ export default function PayPeriodsPage() {
             const idx = payPeriods.indexOf(period)
             const pt = getRecurringTotals(idx)
             const lft = calculateProjectedLeftover(period.payAmount, period.transfers.rent, period.transfers.openbank, pt.fromSavings)
-            const avail = calculateAvailableSpending(lft, calculateSafetyBuffer(lft))
+            const avail = calculateAvailableSpending(lft)
             const active = period.id === selectedPayPeriodId
             return (
               <button
@@ -246,10 +267,11 @@ export default function PayPeriodsPage() {
           })}
         </div>
 
-        {/* Detail + Expenses grid */}
-        <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">
+        {/* Resizable Detail + Expenses panels */}
+        <div ref={containerRef} className="flex gap-0 items-stretch">
 
           {/* Period detail (left) */}
+          <div style={{ width: `${leftPct}%`, minWidth: 0 }}>
           <Card
             title={`Period detail — ${selectedPeriod.label}`}
             subtitle={`Pay date: ${selectedPeriod.payDate}`}
@@ -264,43 +286,125 @@ export default function PayPeriodsPage() {
               )
             }
           >
-            <div className="space-y-3">
-              {editMode ? (
-                <>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-500">Pay Amount</label>
-                    <input type="number" className={inputCls} value={draftSelected.payAmount}
-                      onChange={(e) => updateDraft(draftSelected.id, { payAmount: Number(e.target.value) })} />
+            <div className="space-y-5 text-sm">
+
+              {/* BofA Savings section */}
+              <div>
+                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-600">
+                  <span className="h-2 w-2 rounded-full bg-blue-400" /> BofA Savings
+                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Paycheck in</span>
+                    {editMode ? (
+                      <input type="number" className={`${inputCls} w-28 text-right`} value={draftSelected.payAmount}
+                        onChange={(e) => updateDraft(draftSelected.id, { payAmount: Number(e.target.value) })} />
+                    ) : (
+                      <span className="font-semibold text-slate-900">${selectedPeriod.payAmount.toLocaleString()}</span>
+                    )}
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-500">Rent Transfer</label>
-                    <input type="number" className={inputCls} value={draftSelected.transfers.rent}
-                      onChange={(e) => updateDraftTransfer(draftSelected.id, 'rent', Number(e.target.value))} />
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="flex items-center gap-1"><span className="text-xs">↳</span> → Rent Holdings</span>
+                    {editMode ? (
+                      <input type="number" className={`${inputCls} w-28 text-right`} value={draftSelected.transfers.rent}
+                        onChange={(e) => updateDraftTransfer(draftSelected.id, 'rent', Number(e.target.value))} />
+                    ) : (
+                      <span className="text-slate-600">−${selectedPeriod.transfers.rent.toLocaleString()}</span>
+                    )}
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-slate-500">OpenBank Transfer</label>
-                    <input type="number" className={inputCls} value={draftSelected.transfers.openbank}
-                      onChange={(e) => updateDraftTransfer(draftSelected.id, 'openbank', Number(e.target.value))} />
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="flex items-center gap-1"><span className="text-xs">↳</span> → OpenBank</span>
+                    {editMode ? (
+                      <input type="number" className={`${inputCls} w-28 text-right`} value={draftSelected.transfers.openbank}
+                        onChange={(e) => updateDraftTransfer(draftSelected.id, 'openbank', Number(e.target.value))} />
+                    ) : (
+                      <span className="text-slate-600">−${selectedPeriod.transfers.openbank.toLocaleString()}</span>
+                    )}
                   </div>
-                </>
-              ) : (
-                <>
-                  <InfoRow label="Pay amount" value={`$${selectedPeriod.payAmount.toLocaleString()}`} />
-                  <InfoRow label="Rent transfer" value={`$${selectedPeriod.transfers.rent.toLocaleString()}`} />
-                  <InfoRow label="OpenBank transfer" value={`$${selectedPeriod.transfers.openbank.toLocaleString()}`} />
-                </>
-              )}
-              <div className="border-t border-slate-100" />
-              <InfoRow label="Savings expenses due" value={`$${recurringTotals.fromSavings.toLocaleString()}`} />
-              <InfoRow label="Checkings expenses" value={`$${recurringTotals.fromChecking.toLocaleString()}`} />
-              <InfoRow label="CashApp load" value={`$${recurringTotals.fromCashApp.toLocaleString()}`} />
-              <InfoRow label="Projected leftover" value={`$${projectedLeftover.toLocaleString()}`} />
-              <InfoRow label="Safety buffer" value={`$${safetyBuffer.toLocaleString()}`} note={`${Math.round((safetyBuffer / Math.max(projectedLeftover, 1)) * 100)}%`} />
-              <InfoRow label="Available spending" value={`$${availableSpending.toLocaleString()}`} />
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="flex items-center gap-1"><span className="text-xs">↳</span> Savings bills</span>
+                    <span className="text-slate-600">−${recurringTotals.fromSavings.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="flex items-center gap-1"><span className="text-xs">↳</span> Safety buffer</span>
+                    <span className="text-slate-600">−${SAVINGS_BUFFER}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-slate-100 pt-2">
+                    <span className="font-medium text-slate-600">→ Transfer to Checkings</span>
+                    <span className={`font-semibold ${projectedLeftover < 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                      ${projectedLeftover.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* BofA Checkings section */}
+              <div>
+                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-600">
+                  <span className="h-2 w-2 rounded-full bg-sky-400" /> BofA Checkings
+                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>Received from Savings</span>
+                    <span className="text-slate-600">${projectedLeftover.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="flex items-center gap-1"><span className="text-xs">↳</span> Fixed subscriptions</span>
+                    <span className="text-slate-600">−${recurringTotals.fromChecking.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="flex items-center gap-1"><span className="text-xs">↳</span> → CashApp load</span>
+                    <span className="text-slate-600">−${recurringTotals.fromCashApp.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="flex items-center gap-1"><span className="text-xs">↳</span> Safety buffer</span>
+                    <span className="text-slate-600">−${CHECKING_BUFFER}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-slate-100 pt-2">
+                    <span className="font-medium text-slate-600">Available to spend</span>
+                    <span className={`font-bold text-base ${availableSpending < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      ${availableSpending.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* CashApp section */}
+              <div>
+                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-600">
+                  <span className="h-2 w-2 rounded-full bg-amber-400" /> CashApp
+                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>Loaded from Checkings</span>
+                    <span className="text-slate-600">${recurringTotals.fromCashApp.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="flex items-center gap-1"><span className="text-xs">↳</span> Groceries</span>
+                    <span className="text-slate-600">−${recurringTotals.groceries.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="flex items-center gap-1"><span className="text-xs">↳</span> Bus</span>
+                    <span className="text-slate-600">−${recurringTotals.bus.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </Card>
+          </div>
+
+          {/* Drag handle */}
+          <div
+            onMouseDown={onDragStart}
+            className="flex w-3 shrink-0 cursor-col-resize items-center justify-center"
+            title="Drag to resize"
+          >
+            <div className="h-10 w-0.5 rounded-full bg-slate-200 hover:bg-slate-400 transition-colors" />
+          </div>
 
           {/* Recurring expenses manager (right) */}
+          <div style={{ flex: 1, minWidth: 0 }}>
           <Card
             title="Recurring expenses"
             subtitle="All bills and transfers. Click Edit on any row to change it."
@@ -437,6 +541,7 @@ export default function PayPeriodsPage() {
               })}
             </div>
           </Card>
+          </div>
         </div>
       </Section>
     </div>

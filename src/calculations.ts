@@ -11,22 +11,15 @@ export function calculateCashAppTransfer(groceries: number, bus: number) {
   return groceries + bus
 }
 
-export function calculateSafetyBuffer(balance: number) {
-  if (balance <= 100) {
-    return 0
-  }
+// Two fixed $100 safety buffers: one for BofA Savings, one for BofA Checkings.
+export const SAVINGS_BUFFER = 100
+export const CHECKING_BUFFER = 100
+export const TOTAL_SAFETY_BUFFER = SAVINGS_BUFFER + CHECKING_BUFFER
 
-  if (balance < 200) {
-    return Math.round(balance * 0.1)
-  }
-
-  if (balance < 400) {
-    return Math.round(balance * 0.2)
-  }
-
-  return Math.round(balance * 0.3)
+export function calculateSafetyBuffer() {
+  return TOTAL_SAFETY_BUFFER
 }
 
-export function calculateAvailableSpending(leftover: number, safetyBuffer: number) {
-  return leftover - safetyBuffer
+export function calculateAvailableSpending(leftover: number) {
+  return leftover - TOTAL_SAFETY_BUFFER
 }
