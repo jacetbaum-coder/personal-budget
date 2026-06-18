@@ -57,8 +57,8 @@ export default function DashboardPage() {
   const availableSpending = getAvailableSpending(projectedLeftover)
 
   const dueSavingsExpenses = useMemo(
-    () => recurringExpenses.filter((e) => isRecurringExpenseDue(e, periodIndex) && e.sourceAccount === 'savings'),
-    [recurringExpenses, periodIndex]
+    () => recurringExpenses.filter((e) => isRecurringExpenseDue(e, periodIndex, payPeriods) && e.sourceAccount === 'savings'),
+    [payPeriods, recurringExpenses, periodIndex]
   )
 
   const savingsExpensesTotal = recurringTotals.fromSavings

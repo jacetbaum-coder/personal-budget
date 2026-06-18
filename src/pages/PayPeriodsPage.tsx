@@ -416,11 +416,11 @@ export default function PayPeriodsPage() {
   const sortedExpenses = useMemo(
     () =>
       [...recurringExpenses].sort((a, b) => {
-        const aDue = isRecurringExpenseDue(a, periodIndex) ? 0 : 1
-        const bDue = isRecurringExpenseDue(b, periodIndex) ? 0 : 1
+        const aDue = isRecurringExpenseDue(a, periodIndex, payPeriods) ? 0 : 1
+        const bDue = isRecurringExpenseDue(b, periodIndex, payPeriods) ? 0 : 1
         return aDue !== bDue ? aDue - bDue : a.name.localeCompare(b.name)
       }),
-    [recurringExpenses, periodIndex]
+    [payPeriods, recurringExpenses, periodIndex]
   )
 
   const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-slate-900 focus:outline-none'
@@ -545,7 +545,7 @@ function getExpFundingSources(
   const byAccount = (id: string) => sortedExpenses.filter((e) => e.sourceAccount === id)
 
   const renderExpRow = (expense: RecurringExpense) => {
-    const due = isRecurringExpenseDue(expense, periodIndex)
+    const due = isRecurringExpenseDue(expense, periodIndex, payPeriods)
     if (editingId === expense.id && draftExp) {
       const origAmount = recurringExpenses.find((e) => e.id === expense.id)?.amount ?? 0
       const editDelta = draftExp.amount - origAmount
@@ -1097,7 +1097,7 @@ function getExpFundingSources(
                 const cashAppExps = accountId === 'checking' ? byAccount('cashApp') : []
                 // total due this period for this group (including sub-groups for checking)
                 const dueTotal = [...groupExps, ...(accountId === 'checking' ? cashAppExps : [])]
-                  .filter((e) => isRecurringExpenseDue(e, periodIndex))
+                  .filter((e) => isRecurringExpenseDue(e, periodIndex, payPeriods))
                   .reduce((s, e) => s + e.amount, 0)
 
                 return (
