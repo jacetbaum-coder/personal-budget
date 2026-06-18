@@ -115,7 +115,7 @@ export default function PayPeriodsPage() {
                 )
               })}
             </div>
-
+          </div>
 
           <div className="space-y-4">
             <Card title="Selected pay period details" subtitle={`${selectedPeriod.label} • ${selectedPeriod.payDate}`}>
