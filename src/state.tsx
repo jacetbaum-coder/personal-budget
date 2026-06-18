@@ -31,12 +31,14 @@ export interface AppState {
   dashboardButtonText: string
   defaultPayPeriodLabel: string
   currency: string
+  selectedPayDate: string
   forecastHorizon: number
   notifications: { email: boolean; push: boolean }
   setAccounts: (accounts: Account[]) => void
   setPayPeriods: (payPeriods: PayPeriod[]) => void
   setRecurringExpenses: (expenses: RecurringExpense[] | ((current: RecurringExpense[]) => RecurringExpense[])) => void
   setTransactions: (transactions: TransactionRecord[] | ((current: TransactionRecord[]) => TransactionRecord[])) => void
+  setSelectedPayDate: (date: string) => void
   setSelectedPayPeriodId: (id: number) => void
   setSelectedForecastPointId: (id: number) => void
   setExtraMoney: (amount: number) => void
@@ -71,6 +73,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [dashboardButtonText, setDashboardButtonText] = useState<string>('New allocation')
   const [defaultPayPeriodLabel, setDefaultPayPeriodLabel] = useState<string>('Biweekly')
   const [currency, setCurrency] = useState<string>('USD')
+  const [selectedPayDate, setSelectedPayDate] = useState<string>('2026-06-28')
   const [forecastHorizon, setForecastHorizon] = useState<number>(30)
   const [notifications, setNotifications] = useState<{ email: boolean; push: boolean }>({
     email: false,
@@ -126,12 +129,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       dashboardButtonText,
       defaultPayPeriodLabel,
       currency,
+      selectedPayDate,
       forecastHorizon,
       notifications,
       setAccounts,
       setPayPeriods,
       setRecurringExpenses: wrappedSetRecurringExpenses,
       setTransactions: wrappedSetTransactions,
+      setSelectedPayDate,
       setSelectedPayPeriodId,
       setSelectedForecastPointId,
       setExtraMoney,
@@ -163,6 +168,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       dashboardButtonText,
       defaultPayPeriodLabel,
       currency,
+      selectedPayDate,
       forecastHorizon,
       notifications
     ]
