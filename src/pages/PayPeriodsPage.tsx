@@ -90,6 +90,13 @@ export default function PayPeriodsPage() {
   const safetyBuffer = calculateSafetyBuffer()
   const availableSpending = calculateAvailableSpending(projectedLeftover)
 
+  // ── Account snapshot slider (before payday → payday hit → after moves) ───
+  const [accountSnapshotStage, setAccountSnapshotStage] = useState<0 | 1 | 2>(2)
+
+  useEffect(() => {
+    setAccountSnapshotStage(2)
+  }, [selectedPayPeriodId])
+
   // ── CashApp manual adjustment planning ────────────────────────────────────
   const [cashAppPlan, setCashAppPlan] = useState<{
     override: number | null
@@ -104,6 +111,39 @@ export default function PayPeriodsPage() {
   const cashAppComputed = recurringTotals.fromCashApp
   const cashAppAmount = cashAppPlan.override ?? cashAppComputed
   const cashAppDelta = cashAppAmount - cashAppComputed
+
+  const accountSnapshots = useMemo(() => {
+    const bal = (id: string) => accounts.find((a) => a.id === id)?.balance ?? 0
+
+    const before = {
+      savings: bal('savings'),
+      checking: bal('checking'),
+      rentFund: bal('rentFund'),
+      cashApp: bal('cashApp'),
+      openbank: bal('openbank'),
+      spending: bal('checking'),
+    }
+
+    const payday = {
+      ...before,
+      savings: before.savings + selectedPeriod.payAmount,
+    }
+
+    // Target view after the paycheck checklist flow is completed.
+    const after = {
+      savings: before.savings + SAVINGS_BUFFER,
+      checking: before.checking + CHECKING_BUFFER + availableSpending,
+      rentFund: before.rentFund + selectedPeriod.transfers.rent,
+      cashApp: before.cashApp + cashAppAmount - recurringTotals.groceries - recurringTotals.bus,
+      openbank: before.openbank + selectedPeriod.transfers.openbank,
+      spending: availableSpending,
+    }
+
+    return [before, payday, after] as const
+  }, [accounts, availableSpending, cashAppAmount, recurringTotals.bus, recurringTotals.groceries, selectedPeriod.payAmount, selectedPeriod.transfers.openbank, selectedPeriod.transfers.rent])
+
+  const snapshotStageLabels = ['Before payday', 'Paycheck landed', 'After moves'] as const
+  const currentSnapshot = accountSnapshots[accountSnapshotStage]
 
   // ── Period-edit helpers ────────────────────────────────────────────────────
   const updateDraft = (id: number, patch: Partial<PayPeriod>) =>
@@ -781,6 +821,66 @@ const FUNDING_SOURCE_OPTIONS = [
                     <span className="flex items-center gap-1"><span className="text-xs">↳</span> Bus</span>
                     <span className="text-slate-600">−${recurringTotals.bus.toLocaleString()}</span>
                   </div>
+                </div>
+              </div>
+
+              {/* Account targets snapshot bubble */}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Account targets</p>
+                    <p className="mt-1 text-xs text-slate-500">Slide to preview balances before payday, right when paycheck lands, and after you move everything.</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600 border border-slate-200">
+                    {snapshotStageLabels[accountSnapshotStage]}
+                  </span>
+                </div>
+
+                <div className="mb-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={1}
+                    value={accountSnapshotStage}
+                    onChange={(e) => setAccountSnapshotStage(Number(e.target.value) as 0 | 1 | 2)}
+                    className="w-full accent-slate-900"
+                  />
+                  <div className="mt-1 grid grid-cols-3 text-[11px] text-slate-400">
+                    {snapshotStageLabels.map((label, idx) => (
+                      <span key={label} className={`${idx === 0 ? 'text-left' : idx === 1 ? 'text-center' : 'text-right'} ${accountSnapshotStage === idx ? 'font-semibold text-slate-700' : ''}`}>
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  {[
+                    { id: 'savings', label: 'BofA Savings', value: currentSnapshot.savings, dot: 'bg-blue-400' },
+                    { id: 'checking', label: 'BofA Checkings', value: currentSnapshot.checking, dot: 'bg-sky-400' },
+                    { id: 'rentFund', label: 'BofA Rent Holdings', value: currentSnapshot.rentFund, dot: 'bg-violet-400' },
+                    { id: 'cashApp', label: 'CashApp', value: currentSnapshot.cashApp, dot: 'bg-amber-400' },
+                    { id: 'spending', label: 'Spending Money', value: currentSnapshot.spending, dot: 'bg-slate-400' },
+                    { id: 'openbank', label: 'OpenBank', value: currentSnapshot.openbank, dot: 'bg-emerald-400' },
+                  ].map((row) => {
+                    const beforeValue = accountSnapshots[0][row.id as keyof typeof accountSnapshots[0]]
+                    const delta = row.value - Number(beforeValue)
+                    return (
+                      <div key={row.id} className="flex items-center justify-between rounded-xl bg-white border border-slate-100 px-3 py-2">
+                        <p className="flex items-center gap-2 text-slate-600">
+                          <span className={`h-2 w-2 rounded-full ${row.dot}`} />
+                          <span className="text-xs font-medium">{row.label}</span>
+                        </p>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-slate-900">${row.value.toLocaleString()}</p>
+                          <p className={`text-[11px] ${delta === 0 ? 'text-slate-400' : delta > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {delta === 0 ? 'No change' : `${delta > 0 ? '+' : '−'}$${Math.abs(delta).toLocaleString()} vs before`}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
