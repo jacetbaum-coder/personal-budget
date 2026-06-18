@@ -3,9 +3,7 @@ import Card from '../components/Card'
 import InfoRow from '../components/InfoRow'
 import Section from '../components/Section'
 import {
-  calculateAvailableSpending,
   calculateProjectedLeftover,
-  calculateSafetyBuffer,
   SAVINGS_BUFFER,
   CHECKING_BUFFER,
 } from '../calculations'
@@ -80,6 +78,10 @@ export default function PayPeriodsPage() {
     [payPeriods, selectedPayPeriodId]
   )
 
+  // User-controlled split of leftover money (after required bills+buffers)
+  const [savingsSplitByPeriod, setSavingsSplitByPeriod] = useState<Record<number, number>>({})
+  const [allocationIntentByPeriod, setAllocationIntentByPeriod] = useState<Record<number, 'save' | 'spend' | null>>({})
+
   const recurringTotals = getRecurringTotals(periodIndex)
   const projectedLeftover = calculateProjectedLeftover(
     selectedPeriod.payAmount,
@@ -87,9 +89,24 @@ export default function PayPeriodsPage() {
     selectedPeriod.transfers.openbank,
     recurringTotals.fromSavings
   )
-  const safetyBuffer = calculateSafetyBuffer()
-  const availableSpending = calculateAvailableSpending(projectedLeftover)
   const cashAppLoad = recurringTotals.groceries + recurringTotals.bus
+
+  const totalRequired =
+    selectedPeriod.transfers.rent +
+    selectedPeriod.transfers.openbank +
+    recurringTotals.fromSavings +
+    recurringTotals.fromChecking +
+    cashAppLoad +
+    SAVINGS_BUFFER +
+    CHECKING_BUFFER
+
+  // Positive: money left to allocate. Negative: shortfall.
+  const affordabilityGap = selectedPeriod.payAmount - totalRequired
+
+  const savingsSplitPct = savingsSplitByPeriod[selectedPeriod.id] ?? 0
+  const extraToSavings = affordabilityGap > 0 ? Math.round((affordabilityGap * savingsSplitPct) / 100) : 0
+  const spendingMoneyTarget = affordabilityGap > 0 ? affordabilityGap - extraToSavings : affordabilityGap
+  const allocationIntent = allocationIntentByPeriod[selectedPeriod.id] ?? null
 
   // ── Account snapshot slider (before payday → payday hit → after moves) ───
   const [accountSnapshotStage, setAccountSnapshotStage] = useState<0 | 1 | 2>(2)
@@ -117,19 +134,29 @@ export default function PayPeriodsPage() {
 
     // Target view after the paycheck checklist flow is completed.
     const after = {
-      savings: before.savings + SAVINGS_BUFFER,
-      checking: before.checking + CHECKING_BUFFER + availableSpending,
+      savings: before.savings + SAVINGS_BUFFER + extraToSavings,
+      checking: before.checking + CHECKING_BUFFER + spendingMoneyTarget,
       rentFund: before.rentFund + selectedPeriod.transfers.rent,
       cashApp: before.cashApp + cashAppLoad - recurringTotals.groceries - recurringTotals.bus,
       openbank: before.openbank + selectedPeriod.transfers.openbank,
-      spending: availableSpending,
+      spending: spendingMoneyTarget,
     }
 
     return [before, payday, after] as const
-  }, [accounts, availableSpending, cashAppLoad, recurringTotals.bus, recurringTotals.groceries, selectedPeriod.payAmount, selectedPeriod.transfers.openbank, selectedPeriod.transfers.rent])
+  }, [accounts, cashAppLoad, extraToSavings, recurringTotals.bus, recurringTotals.groceries, selectedPeriod.payAmount, selectedPeriod.transfers.openbank, selectedPeriod.transfers.rent, spendingMoneyTarget])
 
   const snapshotStageLabels = ['Before payday', 'Paycheck landed', 'After moves'] as const
   const currentSnapshot = accountSnapshots[accountSnapshotStage]
+
+  const shortfall = Math.max(0, -affordabilityGap)
+  const openbankHelp = Math.min(shortfall, selectedPeriod.transfers.openbank)
+  const shortfallAfterOpenbank = shortfall - openbankHelp
+  const savingsBufferHelp = Math.min(shortfall, SAVINGS_BUFFER)
+  const shortfallAfterSavingsBuffer = shortfall - savingsBufferHelp
+  const checkingBufferHelp = Math.min(shortfall, CHECKING_BUFFER)
+  const shortfallAfterCheckingBuffer = shortfall - checkingBufferHelp
+  const comboOpenbankThenSavings = Math.min(shortfallAfterOpenbank, SAVINGS_BUFFER)
+  const comboStillShort = shortfall - openbankHelp - comboOpenbankThenSavings
 
   // ── Period-edit helpers ────────────────────────────────────────────────────
   const updateDraft = (id: number, patch: Partial<PayPeriod>) =>
@@ -176,7 +203,7 @@ export default function PayPeriodsPage() {
   const fundingCtx = {
     savingsBuffer: SAVINGS_BUFFER,
     checkingBuffer: CHECKING_BUFFER,
-    spendingMoney: availableSpending,
+    spendingMoney: spendingMoneyTarget,
     openbankTransfer: selectedPeriod.transfers.openbank,
     rentTransfer: selectedPeriod.transfers.rent,
     periodIndex,
@@ -518,8 +545,16 @@ function getExpFundingSources(
           {payPeriods.map((period) => {
             const idx = payPeriods.indexOf(period)
             const pt = getRecurringTotals(idx)
-            const lft = calculateProjectedLeftover(period.payAmount, period.transfers.rent, period.transfers.openbank, pt.fromSavings)
-            const avail = calculateAvailableSpending(lft)
+            const periodCashAppLoad = pt.groceries + pt.bus
+            const req =
+              period.transfers.rent +
+              period.transfers.openbank +
+              pt.fromSavings +
+              pt.fromChecking +
+              periodCashAppLoad +
+              SAVINGS_BUFFER +
+              CHECKING_BUFFER
+            const avail = period.payAmount - req
             const active = period.id === selectedPayPeriodId
             return (
               <button
@@ -635,8 +670,8 @@ function getExpFundingSources(
                   </div>
                   <div className="flex items-center justify-between border-t border-slate-100 pt-2">
                     <span className="font-medium text-slate-600">Available to spend</span>
-                    <span className={`font-bold text-base ${availableSpending < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                      ${availableSpending.toLocaleString()}
+                    <span className={`font-bold text-base ${spendingMoneyTarget < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      ${spendingMoneyTarget.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -754,6 +789,85 @@ function getExpFundingSources(
               ) : undefined
             }
           >
+            {/* Affordability + allocation planner */}
+            <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Affordability & allocation</p>
+                  <p className="text-xs text-slate-500">Checks this period against your paycheck, then lets you split leftover between extra savings and spending.</p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${affordabilityGap >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                  {affordabilityGap >= 0 ? 'Affordable' : 'Short by'} {affordabilityGap >= 0 ? `$${affordabilityGap.toLocaleString()}` : `$${Math.abs(affordabilityGap).toLocaleString()}`}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-xs text-slate-600">
+                <div className="flex items-center justify-between"><span>Paycheck</span><span className="font-medium text-slate-900">${selectedPeriod.payAmount.toLocaleString()}</span></div>
+                <div className="flex items-center justify-between"><span>Total required this period (bills + transfers + $200 buffers)</span><span className="font-medium text-slate-900">${totalRequired.toLocaleString()}</span></div>
+              </div>
+
+              {affordabilityGap >= 0 ? (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="mb-2 flex flex-wrap items-center gap-4 text-xs text-slate-600">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={allocationIntent === 'save'}
+                        onChange={() => setAllocationIntentByPeriod((prev) => ({ ...prev, [selectedPeriod.id]: allocationIntent === 'save' ? null : 'save' }))}
+                      />
+                      I want to save more
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={allocationIntent === 'spend'}
+                        onChange={() => setAllocationIntentByPeriod((prev) => ({ ...prev, [selectedPeriod.id]: allocationIntent === 'spend' ? null : 'spend' }))}
+                      />
+                      I want to spend more
+                    </label>
+                  </div>
+
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {(allocationIntent === 'save' ? [50, 70, 90] : allocationIntent === 'spend' ? [10, 20, 30] : [0, 25, 50]).map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setSavingsSplitByPeriod((prev) => ({ ...prev, [selectedPeriod.id]: pct }))}
+                        className={`rounded-full border px-2.5 py-1 text-xs ${savingsSplitPct === pct ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        {pct}% savings / {100 - pct}% spending
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={savingsSplitPct}
+                    onChange={(e) => setSavingsSplitByPeriod((prev) => ({ ...prev, [selectedPeriod.id]: Number(e.target.value) }))}
+                    className="w-full accent-slate-900"
+                  />
+                  <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
+                    <p>Extra to savings: <span className="font-semibold text-emerald-700">${extraToSavings.toLocaleString()}</span></p>
+                    <p>Spending money: <span className="font-semibold text-slate-900">${spendingMoneyTarget.toLocaleString()}</span></p>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800 space-y-2">
+                  <p className="font-semibold">You cannot afford everything this period as currently planned.</p>
+                  <p>Options (preview only):</p>
+                  <div className="space-y-1.5">
+                    <p>• Pull from OpenBank transfer: reduce by ${openbankHelp.toLocaleString()} → OpenBank transfer becomes ${(selectedPeriod.transfers.openbank - openbankHelp).toLocaleString()} ({shortfallAfterOpenbank > 0 ? `$${shortfallAfterOpenbank.toLocaleString()} still short` : 'fully covered'})</p>
+                    <p>• Use BofA Savings buffer: down by ${savingsBufferHelp.toLocaleString()} → savings buffer becomes ${(SAVINGS_BUFFER - savingsBufferHelp).toLocaleString()} ({shortfallAfterSavingsBuffer > 0 ? `$${shortfallAfterSavingsBuffer.toLocaleString()} still short` : 'fully covered'})</p>
+                    <p>• Use BofA Checkings buffer: down by ${checkingBufferHelp.toLocaleString()} → checkings buffer becomes ${(CHECKING_BUFFER - checkingBufferHelp).toLocaleString()} ({shortfallAfterCheckingBuffer > 0 ? `$${shortfallAfterCheckingBuffer.toLocaleString()} still short` : 'fully covered'})</p>
+                    <p>• Combo suggestion: OpenBank (${openbankHelp.toLocaleString()}) + Savings buffer (${comboOpenbankThenSavings.toLocaleString()}) {comboStillShort > 0 ? `→ still short $${comboStillShort.toLocaleString()}` : '→ covers full shortfall'}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Add form */}
             {showAdd && (
               <div className="mb-4 rounded-2xl border border-slate-300 bg-slate-50 p-4">
@@ -860,8 +974,8 @@ function getExpFundingSources(
                           <div className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-2">
                             <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" />
                             <p className="text-xs font-semibold uppercase tracking-wider text-amber-600">CashApp</p>
-                            {recurringTotals.fromCashApp > 0 && (
-                              <span className="ml-auto text-xs text-slate-400">${recurringTotals.fromCashApp.toLocaleString()} due</span>
+                            {cashAppLoad > 0 && (
+                              <span className="ml-auto text-xs text-slate-400">${cashAppLoad.toLocaleString()} due</span>
                             )}
                           </div>
                           <div className="space-y-1.5">{cashAppExps.map(renderExpRow)}</div>
@@ -874,7 +988,7 @@ function getExpFundingSources(
                           </div>
                           <div className="flex items-center justify-between rounded-xl bg-slate-900 px-4 py-3 text-sm text-white">
                             <p>Available this period</p>
-                            <p className="font-semibold">${availableSpending.toLocaleString()}</p>
+                            <p className="font-semibold">${spendingMoneyTarget.toLocaleString()}</p>
                           </div>
                         </div>
                       </div>
