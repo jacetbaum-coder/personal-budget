@@ -14,11 +14,11 @@ export function isRecurringExpenseDue(expense: RecurringExpense, periodIndex: nu
   switch (expense.frequency) {
     case 'Every paycheck':
       return true
-    case 'Every other paycheck':
-    case 'Monthly': {
-      const offset = expense.cycleOffset ?? 0
-      return (periodIndex + offset) % 2 === 0
-    }
+    case '1st paycheck of month':
+    case 'Monthly':
+      return periodIndex % 2 === 0
+    case '2nd paycheck of month':
+      return periodIndex % 2 === 1
     case 'Custom':
       return expense.customInterval != null ? periodIndex % expense.customInterval === 0 : false
     default:

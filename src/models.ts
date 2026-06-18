@@ -5,7 +5,24 @@ export interface Account {
   id: AccountId
   name: string
   balance: number
+  color?: string
 }
+
+// ── Account color palette ─────────────────────────────────────────────────────
+export type AccountColor =
+  | 'blue' | 'sky' | 'emerald' | 'violet' | 'amber' | 'rose' | 'orange' | 'teal' | 'slate'
+
+export const accountColorOptions: { value: AccountColor; label: string; dot: string; border: string; badge: string }[] = [
+  { value: 'blue',    label: 'Blue',    dot: 'bg-blue-400',    border: 'border-l-blue-400',    badge: 'bg-blue-100 text-blue-700'    },
+  { value: 'sky',     label: 'Sky',     dot: 'bg-sky-400',     border: 'border-l-sky-400',     badge: 'bg-sky-100 text-sky-700'      },
+  { value: 'emerald', label: 'Emerald', dot: 'bg-emerald-400', border: 'border-l-emerald-400', badge: 'bg-emerald-100 text-emerald-700' },
+  { value: 'violet',  label: 'Violet',  dot: 'bg-violet-400',  border: 'border-l-violet-400',  badge: 'bg-violet-100 text-violet-700'  },
+  { value: 'amber',   label: 'Amber',   dot: 'bg-amber-400',   border: 'border-l-amber-400',   badge: 'bg-amber-100 text-amber-700'    },
+  { value: 'rose',    label: 'Rose',    dot: 'bg-rose-400',    border: 'border-l-rose-400',    badge: 'bg-rose-100 text-rose-700'      },
+  { value: 'orange',  label: 'Orange',  dot: 'bg-orange-400',  border: 'border-l-orange-400',  badge: 'bg-orange-100 text-orange-700'  },
+  { value: 'teal',    label: 'Teal',    dot: 'bg-teal-400',    border: 'border-l-teal-400',    badge: 'bg-teal-100 text-teal-700'      },
+  { value: 'slate',   label: 'Slate',   dot: 'bg-slate-400',   border: 'border-l-slate-400',   badge: 'bg-slate-100 text-slate-700'    },
+]
 
 export interface PayPeriod {
   id: number
@@ -18,7 +35,12 @@ export interface PayPeriod {
   }
 }
 
-export type RecurringFrequency = 'Every paycheck' | 'Every other paycheck' | 'Monthly' | 'Custom'
+export type RecurringFrequency =
+  | 'Every paycheck'
+  | '1st paycheck of month'
+  | '2nd paycheck of month'
+  | 'Monthly'
+  | 'Custom'
 
 export type ExpenseCategory =
   | 'creditCards'
@@ -51,8 +73,8 @@ export interface RecurringExpense {
   category: ExpenseCategory
   /** Which account this expense draws from. */
   sourceAccount: AccountId
-  /** 0 = even-indexed periods (default), 1 = odd-indexed periods. */
-  cycleOffset?: number
+  /** Optional bill due date, e.g. "the 15th" or "2026-07-15" — display only. */
+  dueDate?: string
   customInterval?: number
 }
 
@@ -113,11 +135,11 @@ export interface ForecastPoint {
 // ── Actual data ───────────────────────────────────────────────────────────────
 
 export const sampleAccounts: Account[] = [
-  { id: 'savings',  name: 'BofA Savings',       balance: 1200 },
-  { id: 'rentFund', name: 'BofA Rent Holdings',  balance: 600  },
-  { id: 'openbank', name: 'OpenBank',             balance: 2268 },
-  { id: 'checking', name: 'BofA Checkings',       balance: 310  },
-  { id: 'cashApp',  name: 'CashApp',              balance: 45   },
+  { id: 'savings',  name: 'BofA Savings',       balance: 1200, color: 'blue'    },
+  { id: 'rentFund', name: 'BofA Rent Holdings',  balance: 600,  color: 'violet'  },
+  { id: 'openbank', name: 'OpenBank',             balance: 2268, color: 'emerald' },
+  { id: 'checking', name: 'BofA Checkings',       balance: 310,  color: 'sky'     },
+  { id: 'cashApp',  name: 'CashApp',              balance: 45,   color: 'amber'   },
 ]
 
 // Active periods Jun 18 → Sep 11, 2026.
@@ -135,21 +157,21 @@ export const samplePayPeriods: PayPeriod[] = [
 
 export const sampleRecurringExpenses: RecurringExpense[] = [
   // ── From BofA Savings ────────────────────────────────────────────────────
-  { id: 1,  name: 'Quicksilver',       amount: 100,   frequency: 'Every other paycheck', category: 'creditCards',  sourceAccount: 'savings',  cycleOffset: 0 },
-  { id: 2,  name: 'Utilities',         amount: 130,   frequency: 'Every other paycheck', category: 'utilities',    sourceAccount: 'savings',  cycleOffset: 1 },
-  { id: 3,  name: 'Stupid pets52',     amount: 5.99,  frequency: 'Every other paycheck', category: 'subscription', sourceAccount: 'savings',  cycleOffset: 0 },
-  { id: 4,  name: 'Pet Insurance',     amount: 25.07, frequency: 'Every other paycheck', category: 'insurance',    sourceAccount: 'savings',  cycleOffset: 0 },
-  { id: 5,  name: 'Chris Lex Advisor', amount: 25,    frequency: 'Every paycheck',       category: 'advisor',      sourceAccount: 'savings'                   },
-  { id: 6,  name: 'VentureOne',        amount: 115,   frequency: 'Every other paycheck', category: 'creditCards',  sourceAccount: 'savings',  cycleOffset: 1 },
-  { id: 7,  name: 'Student Loans',     amount: 0,     frequency: 'Every paycheck',       category: 'studentLoans', sourceAccount: 'savings'                   },
+  { id: 1,  name: 'Quicksilver',       amount: 100,   frequency: '1st paycheck of month', category: 'creditCards',  sourceAccount: 'savings',  dueDate: 'the 25th' },
+  { id: 2,  name: 'Utilities',         amount: 130,   frequency: '2nd paycheck of month', category: 'utilities',    sourceAccount: 'savings',  dueDate: 'the 15th' },
+  { id: 3,  name: 'Stupid pets52',     amount: 5.99,  frequency: '1st paycheck of month', category: 'subscription', sourceAccount: 'savings'  },
+  { id: 4,  name: 'Pet Insurance',     amount: 25.07, frequency: '1st paycheck of month', category: 'insurance',    sourceAccount: 'savings',  dueDate: 'the 10th' },
+  { id: 5,  name: 'Chris Lex Advisor', amount: 25,    frequency: 'Every paycheck',        category: 'advisor',      sourceAccount: 'savings'  },
+  { id: 6,  name: 'VentureOne',        amount: 115,   frequency: '2nd paycheck of month', category: 'creditCards',  sourceAccount: 'savings',  dueDate: 'the 22nd' },
+  { id: 7,  name: 'Student Loans',     amount: 0,     frequency: 'Every paycheck',        category: 'studentLoans', sourceAccount: 'savings'  },
   // ── From BofA Checkings ──────────────────────────────────────────────────
-  { id: 8,  name: 'Planet Fitness',    amount: 16,    frequency: 'Every other paycheck', category: 'subscription', sourceAccount: 'checking', cycleOffset: 1 },
-  { id: 9,  name: 'Spotify',           amount: 13,    frequency: 'Every other paycheck', category: 'subscription', sourceAccount: 'checking', cycleOffset: 1 },
-  { id: 10, name: 'Amazon',            amount: 16,    frequency: 'Every other paycheck', category: 'subscription', sourceAccount: 'checking', cycleOffset: 0 },
-  { id: 11, name: 'Google Pay',        amount: 0,     frequency: 'Every paycheck',       category: 'other',        sourceAccount: 'checking'                  },
+  { id: 8,  name: 'Planet Fitness',    amount: 16,    frequency: '2nd paycheck of month', category: 'subscription', sourceAccount: 'checking', dueDate: 'the 1st'  },
+  { id: 9,  name: 'Spotify',           amount: 13,    frequency: '2nd paycheck of month', category: 'subscription', sourceAccount: 'checking', dueDate: 'the 9th'  },
+  { id: 10, name: 'Amazon',            amount: 16,    frequency: '1st paycheck of month', category: 'subscription', sourceAccount: 'checking', dueDate: 'the 12th' },
+  { id: 11, name: 'Google Pay',        amount: 0,     frequency: 'Every paycheck',        category: 'other',        sourceAccount: 'checking' },
   // ── Via CashApp (loaded from Checkings) ──────────────────────────────────
-  { id: 12, name: 'Groceries',         amount: 70,    frequency: 'Every paycheck',       category: 'groceries',    sourceAccount: 'cashApp'                   },
-  { id: 13, name: 'Bus',               amount: 25,    frequency: 'Every paycheck',       category: 'bus',          sourceAccount: 'cashApp'                   },
+  { id: 12, name: 'Groceries',         amount: 70,    frequency: 'Every paycheck',        category: 'groceries',    sourceAccount: 'cashApp'  },
+  { id: 13, name: 'Bus',               amount: 25,    frequency: 'Every paycheck',        category: 'bus',          sourceAccount: 'cashApp'  },
 ]
 
 export const sampleForecastPoints: ForecastPoint[] = []

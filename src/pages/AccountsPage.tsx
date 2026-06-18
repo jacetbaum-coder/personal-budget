@@ -2,11 +2,16 @@ import { useState } from 'react'
 import Card from '../components/Card'
 import Section from '../components/Section'
 import { useAppState } from '../state'
-import { isRecurringExpenseDue } from '../recurring'
 import type { Account, AccountId, ExpenseCategory, RecurringExpense } from '../models'
-import { expenseCategoryLabels } from '../models'
+import { accountColorOptions, expenseCategoryLabels } from '../models'
 
-const frequencyOptions: RecurringExpense['frequency'][] = ['Every paycheck', 'Every other paycheck', 'Monthly', 'Custom']
+const frequencyOptions: RecurringExpense['frequency'][] = [
+  'Every paycheck',
+  '1st paycheck of month',
+  '2nd paycheck of month',
+  'Monthly',
+  'Custom',
+]
 const categoryOptions = Object.entries(expenseCategoryLabels) as [ExpenseCategory, string][]
 
 const blankExpense = (): Omit<RecurringExpense, 'id'> => ({
@@ -15,9 +20,14 @@ const blankExpense = (): Omit<RecurringExpense, 'id'> => ({
   frequency: 'Every paycheck',
   category: 'other',
   sourceAccount: 'savings',
+  dueDate: '',
 })
 
-const blankAccount = (): Omit<Account, 'id'> => ({ name: '', balance: 0 })
+const blankAccount = (): Omit<Account, 'id'> => ({ name: '', balance: 0, color: 'slate' })
+
+function getColorClasses(color?: string) {
+  return accountColorOptions.find((c) => c.value === color) ?? accountColorOptions[accountColorOptions.length - 1]
+}
 
 export default function AccountsPage() {
   const { accounts, setAccounts, recurringExpenses, setRecurringExpenses } = useAppState()
@@ -150,6 +160,16 @@ export default function AccountsPage() {
                     <input type="number" className={inputCls} value={newAccount.balance}
                       onChange={(e) => setNewAccount((p) => ({ ...p, balance: Number(e.target.value) }))} />
                   </div>
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs text-slate-500">Color</label>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {accountColorOptions.map((opt) => (
+                        <button key={opt.value} type="button" title={opt.label}
+                          onClick={() => setNewAccount((p) => ({ ...p, color: opt.value }))}
+                          className={`h-6 w-6 rounded-full ${opt.dot} transition ${newAccount.color === opt.value ? 'ring-2 ring-offset-2 ring-slate-900 scale-110' : 'opacity-60 hover:opacity-100'}`} />
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button onClick={commitAddAccount}
@@ -173,6 +193,16 @@ export default function AccountsPage() {
                         onChange={(e) => updateDraftAccount(account.id, { name: e.target.value })} />
                       <input type="number" className={inputCls} value={account.balance}
                         onChange={(e) => updateDraftAccount(account.id, { balance: Number(e.target.value) })} />
+                      <div>
+                        <p className="mb-1 text-xs text-slate-400">Color</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {accountColorOptions.map((opt) => (
+                            <button key={opt.value} type="button" title={opt.label}
+                              onClick={() => updateDraftAccount(account.id, { color: opt.value })}
+                              className={`h-5 w-5 rounded-full ${opt.dot} transition ${account.color === opt.value ? 'ring-2 ring-offset-1 ring-slate-900 scale-110' : 'opacity-50 hover:opacity-100'}`} />
+                          ))}
+                        </div>
+                      </div>
                       <button onClick={() => removeDraftAccount(account.id)}
                         className="w-full rounded-xl border border-red-200 bg-red-50 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">
                         Remove
@@ -180,7 +210,12 @@ export default function AccountsPage() {
                     </div>
                   ) : (
                     <>
-                      <p className="text-sm font-semibold text-slate-900">{account.name}</p>
+                      <div className="flex items-center gap-2">
+                        {account.color && (
+                          <span className={`h-3 w-3 rounded-full ${getColorClasses(account.color).dot}`} />
+                        )}
+                        <p className="text-sm font-semibold text-slate-900">{account.name}</p>
+                      </div>
                       <p className="mt-3 text-3xl font-semibold text-slate-900">${account.balance.toLocaleString()}</p>
                     </>
                   )}
@@ -242,16 +277,11 @@ export default function AccountsPage() {
                       {categoryOptions.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </div>
-                  {newExpense.frequency === 'Every other paycheck' && (
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-500">Cycle</label>
-                      <select className={inputCls} value={newExpense.cycleOffset ?? 0}
-                        onChange={(e) => setNewExpense((p) => ({ ...p, cycleOffset: Number(e.target.value) }))}>
-                        <option value={0}>Even periods (current)</option>
-                        <option value={1}>Odd periods (next)</option>
-                      </select>
-                    </div>
-                  )}
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Bill due date (optional)</label>
+                    <input className={inputCls} placeholder="e.g. the 15th" value={newExpense.dueDate ?? ''}
+                      onChange={(e) => setNewExpense((p) => ({ ...p, dueDate: e.target.value }))} />
+                  </div>
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button onClick={commitAddExpense}
@@ -302,16 +332,11 @@ export default function AccountsPage() {
                           {categoryOptions.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                       </div>
-                      {expense.frequency === 'Every other paycheck' && (
-                        <div>
-                          <label className="mb-1 block text-xs text-slate-500">Cycle</label>
-                          <select className={inputCls} value={expense.cycleOffset ?? 0}
-                            onChange={(e) => updateDraftExpense(expense.id, { cycleOffset: Number(e.target.value) })}>
-                            <option value={0}>Even periods (current)</option>
-                            <option value={1}>Odd periods (next)</option>
-                          </select>
-                        </div>
-                      )}
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-500">Bill due date (optional)</label>
+                        <input className={inputCls} placeholder="e.g. the 15th" value={expense.dueDate ?? ''}
+                          onChange={(e) => updateDraftExpense(expense.id, { dueDate: e.target.value })} />
+                      </div>
                       <div className="flex items-end sm:col-span-2 md:col-span-1">
                         <button onClick={() => removeDraftExpense(expense.id)}
                           className="w-full rounded-xl border border-red-200 bg-red-50 py-2 text-xs font-medium text-red-600 hover:bg-red-100">
@@ -320,15 +345,12 @@ export default function AccountsPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
+                    <div className={`flex items-start justify-between gap-4 border-l-4 pl-3 ${getColorClasses(displayedAccounts.find(a => a.id === expense.sourceAccount)?.color).border}`}>
+                      <div className="min-w-0 flex-1">
                         <p className="font-semibold text-slate-900">{expense.name}</p>
-                        <p className="text-sm text-slate-500">{accountName(expense.sourceAccount)} • {expense.frequency}</p>
-                        {expense.frequency === 'Every other paycheck' && (
-                          <p className="mt-0.5 text-xs text-slate-400">
-                            {expense.cycleOffset === 1 ? 'Odd cycle' : 'Even cycle'} —{' '}
-                            {isRecurringExpenseDue(expense, 0) ? 'due this period' : 'next period'}
-                          </p>
+                        <p className="text-sm text-slate-400">{accountName(expense.sourceAccount)} · {expense.frequency}</p>
+                        {expense.dueDate && (
+                          <p className="mt-0.5 text-xs text-slate-400">Due {expense.dueDate}</p>
                         )}
                       </div>
                       <p className="shrink-0 text-lg font-semibold text-slate-900">${expense.amount.toLocaleString()}</p>

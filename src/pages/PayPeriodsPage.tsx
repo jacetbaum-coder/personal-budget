@@ -8,17 +8,23 @@ import {
   calculateSafetyBuffer
 } from '../calculations'
 import type { ExpenseCategory, PayPeriod, RecurringExpense } from '../models'
-import { expenseCategoryLabels } from '../models'
+import { accountColorOptions, expenseCategoryLabels } from '../models'
 import { isRecurringExpenseDue } from '../recurring'
 import { useAppState } from '../state'
 
 const FREQ_OPTIONS: RecurringExpense['frequency'][] = [
   'Every paycheck',
-  'Every other paycheck',
+  '1st paycheck of month',
+  '2nd paycheck of month',
   'Monthly',
   'Custom',
 ]
 const CAT_OPTIONS = Object.entries(expenseCategoryLabels) as [ExpenseCategory, string][]
+
+// Maps account color name → full Tailwind class strings (must be literal for Tailwind to include them)
+function getColorClasses(color?: string) {
+  return accountColorOptions.find((c) => c.value === color) ?? accountColorOptions[accountColorOptions.length - 1]
+}
 
 function blankExpense(accounts: { id: string }[]): Omit<RecurringExpense, 'id'> {
   return {
@@ -27,6 +33,7 @@ function blankExpense(accounts: { id: string }[]): Omit<RecurringExpense, 'id'> 
     frequency: 'Every paycheck',
     category: 'other',
     sourceAccount: accounts[0]?.id ?? 'savings',
+    dueDate: '',
   }
 }
 
@@ -265,16 +272,11 @@ export default function PayPeriodsPage() {
                       {CAT_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </div>
-                  {newExp.frequency === 'Every other paycheck' && (
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-500">Cycle</label>
-                      <select className={selCls} value={newExp.cycleOffset ?? 0}
-                        onChange={(e) => setNewExp((p) => ({ ...p, cycleOffset: Number(e.target.value) }))}>
-                        <option value={0}>Even periods (starts now)</option>
-                        <option value={1}>Odd periods (starts next)</option>
-                      </select>
-                    </div>
-                  )}
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Bill due date (optional)</label>
+                    <input className={inputCls} placeholder="e.g. the 15th" value={newExp.dueDate ?? ''}
+                      onChange={(e) => setNewExp((p) => ({ ...p, dueDate: e.target.value }))} />
+                  </div>
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button onClick={commitAdd}
@@ -330,16 +332,11 @@ export default function PayPeriodsPage() {
                             {CAT_OPTIONS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                           </select>
                         </div>
-                        {draftExp.frequency === 'Every other paycheck' && (
-                          <div>
-                            <label className="mb-1 block text-xs text-slate-500">Cycle</label>
-                            <select className={selCls} value={draftExp.cycleOffset ?? 0}
-                              onChange={(e) => setDraftExp((p) => p ? { ...p, cycleOffset: Number(e.target.value) } : p)}>
-                              <option value={0}>Even periods</option>
-                              <option value={1}>Odd periods</option>
-                            </select>
-                          </div>
-                        )}
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-500">Bill due date (optional)</label>
+                          <input className={inputCls} placeholder="e.g. the 15th" value={draftExp.dueDate ?? ''}
+                            onChange={(e) => setDraftExp((p) => p ? { ...p, dueDate: e.target.value } : p)} />
+                        </div>
                       </div>
                       <div className="mt-3 flex items-center gap-2">
                         <button onClick={saveEditExp}
@@ -362,7 +359,7 @@ export default function PayPeriodsPage() {
                 return (
                   <div
                     key={expense.id}
-                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm ${due ? 'bg-slate-50' : 'bg-white opacity-50'}`}
+                    className={`flex items-center gap-3 rounded-xl border-l-4 pl-3 pr-4 py-3 text-sm ${getColorClasses(accounts.find(a => a.id === expense.sourceAccount)?.color).border} ${due ? 'bg-slate-50' : 'bg-white opacity-50'}`}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -373,6 +370,7 @@ export default function PayPeriodsPage() {
                       </div>
                       <p className="mt-0.5 text-xs text-slate-400">
                         {accountName(expense.sourceAccount)} · {expense.frequency}
+                        {expense.dueDate ? <span className="ml-1 text-slate-300">· due {expense.dueDate}</span> : null}
                       </p>
                     </div>
                     <p className="shrink-0 font-semibold text-slate-900">${expense.amount.toLocaleString()}</p>
