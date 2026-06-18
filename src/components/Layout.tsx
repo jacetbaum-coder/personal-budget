@@ -1,20 +1,22 @@
 import { NavLink } from 'react-router-dom'
 
-const navItems = [
+const primaryNavItems = [
   { label: 'Dashboard', path: '/' },
   { label: 'Pay Periods', path: '/pay-periods' },
-  { label: 'Forecast', path: '/forecast' },
-  { label: 'Money Mover', path: '/money-mover' },
-  { label: 'Transactions', path: '/transactions' },
-  { label: 'History', path: '/history' },
   { label: 'Accounts', path: '/accounts' },
   { label: 'Settings', path: '/settings' }
 ]
 
+const secondaryNavItems = [
+  { label: 'Forecast', path: '/forecast' },
+  { label: 'Money Mover', path: '/money-mover' },
+  { label: 'Transactions', path: '/transactions' },
+  { label: 'History', path: '/history' }
+]
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-50 text-slate-900">      <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
         <header className="flex items-center justify-between rounded-[2rem] border border-slate-200/80 bg-white/80 p-4 shadow-sm shadow-slate-200/50 backdrop-blur">
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Budget OS</p>
@@ -35,7 +37,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <nav className="space-y-2">
-              {navItems.map((item) => (
+              {primaryNavItems.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
@@ -43,7 +45,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   className={({ isActive }) =>
                     `block rounded-3xl px-4 py-3 text-sm font-medium transition ${
                       isActive
-                        ? 'bg-slate-900 text-white shadow-md shadow-slate-900/10'
+                        ? 'bg-slate-100 text-slate-900 shadow-sm shadow-slate-200/50'
                         : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                     }`
                   }
@@ -52,6 +54,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </NavLink>
               ))}
             </nav>
+            <div className="mt-6 rounded-3xl border border-slate-200/80 bg-slate-50 p-4 text-sm text-slate-600">
+              <p className="mb-3 text-xs uppercase tracking-[0.24em] text-slate-500">More tools</p>
+              <div className="space-y-2">
+                {secondaryNavItems.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className="block rounded-2xl px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           </aside>
 
           <main className="space-y-6">

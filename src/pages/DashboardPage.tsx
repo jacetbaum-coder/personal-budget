@@ -27,34 +27,36 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <Section title="Dashboard" description="Your financial command center for spending, cashflow, and upcoming paychecks.">
+      <Section title="Dashboard" description="A calmer dashboard with just the most useful information for your next paycheck.">
         <div className="grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
           <div className="xl:col-span-2">
             <div className="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/40">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-3xl font-semibold text-slate-950">{dashboardHeading}</h2>
-                  <p className="mt-2 text-sm text-slate-500">Your future cashflow at a glance</p>
+                  <h2 className="text-2xl font-semibold text-slate-950">{dashboardHeading}</h2>
+                  <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                    This page shows the single most important numbers for your upcoming pay period: how much you can safely spend and what is already committed.
+                  </p>
                 </div>
-                <button className="inline-flex items-center justify-center rounded-3xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800">
+                <button className="inline-flex items-center justify-center rounded-3xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow-sm shadow-slate-200/50 hover:bg-slate-50">
                   {dashboardButtonText}
                 </button>
               </div>
             </div>
           </div>
-          <Card title="Available to Spend" subtitle="Your safe spending amount before the next paycheck." className="xl:col-span-1">
-            <div className="rounded-[2rem] bg-slate-950 p-8 text-white shadow-xl shadow-slate-950/20">
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Available Spending</p>
-              <p className="mt-4 text-5xl font-semibold tracking-tight">${availableSpending.toLocaleString()}</p>
-              <p className="mt-2 text-sm text-slate-300">Based on current balances, transfers, and scheduled commitments.</p>
+          <Card title="Available to Spend" subtitle="A simplified view of how much is left after pay period commitments." className="xl:col-span-1">
+            <div className="rounded-[2rem] bg-slate-100 p-8 text-slate-900 shadow-sm shadow-slate-200/40">
+              <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Available Spending</p>
+              <p className="mt-4 text-4xl font-semibold tracking-tight">${availableSpending.toLocaleString()}</p>
+              <p className="mt-2 text-sm text-slate-600">This is the amount you should feel comfortable spending before your next paycheck arrives.</p>
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
-                <div className="rounded-3xl bg-slate-900/90 p-5">
-                  <p className="text-sm text-slate-400">Days until next paycheck</p>
-                  <p className="mt-3 text-3xl font-semibold">5</p>
+                <div className="rounded-3xl bg-white p-5 shadow-sm shadow-slate-200/40">
+                  <p className="text-sm text-slate-500">Days until next paycheck</p>
+                  <p className="mt-3 text-2xl font-semibold">5</p>
                 </div>
-                <div className="rounded-3xl bg-slate-900/90 p-5">
-                  <p className="text-sm text-slate-400">Reserved for recurring commitments</p>
-                  <p className="mt-3 text-3xl font-semibold">${safetyBuffer.toLocaleString()}</p>
+                <div className="rounded-3xl bg-white p-5 shadow-sm shadow-slate-200/40">
+                  <p className="text-sm text-slate-500">Reserved for recurring commitments</p>
+                  <p className="mt-3 text-2xl font-semibold">${safetyBuffer.toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -91,31 +93,6 @@ export default function DashboardPage() {
         </div>
       </Section>
 
-      <Section title="Forecast Preview" description="A snapshot of the next three pay periods.">
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Card title="Jun 24 – Jul 7" subtitle="Upcoming pay period">
-            <div className="space-y-2 text-sm text-slate-600">
-              <p className="font-semibold text-slate-900">$3,450 expected</p>
-              <p>Safe spend: $1,120</p>
-              <p>Projected buffer: $680</p>
-            </div>
-          </Card>
-          <Card title="Jul 8 – Jul 21" subtitle="Second pay period">
-            <div className="space-y-2 text-sm text-slate-600">
-              <p className="font-semibold text-slate-900">$3,450 expected</p>
-              <p>Safe spend: $1,050</p>
-              <p>Projected buffer: $610</p>
-            </div>
-          </Card>
-          <Card title="Jul 22 – Aug 4" subtitle="Looking ahead">
-            <div className="space-y-2 text-sm text-slate-600">
-              <p className="font-semibold text-slate-900">$3,450 expected</p>
-              <p>Safe spend: $1,180</p>
-              <p>Projected buffer: $720</p>
-            </div>
-          </Card>
-        </div>
-      </Section>
     </div>
   )
 }

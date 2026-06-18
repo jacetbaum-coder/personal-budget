@@ -206,7 +206,7 @@ export default function SettingsPage() {
 
                 <label className="block">
                   <span className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Forecast horizon</span>
-                  <p className="mt-1 text-xs text-slate-500">How far ahead the app projects your cash availability and pay period runway.</p>
+                  <p className="mt-1 text-xs leading-6 text-slate-500">This controls how far ahead the app shows your projected cash available and upcoming paychecks. It is not a target amount; it is only the length of the forecast.</p>
                   {editMode ? (
                     <select
                       value={draftHorizon}
