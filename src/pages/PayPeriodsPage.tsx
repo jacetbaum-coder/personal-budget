@@ -18,7 +18,6 @@ const FREQ_OPTIONS: RecurringExpense['frequency'][] = [
   'Custom',
 ]
 const CAT_OPTIONS = Object.entries(expenseCategoryLabels) as [ExpenseCategory, string][]
-const MIN_SPENDING_MONEY = 200
 const STARTING_BALANCE_FIELDS: { id: string; label: string; dot: string }[] = [
   { id: 'savings', label: 'BofA Savings', dot: 'bg-blue-400' },
   { id: 'checking', label: 'BofA Checkings', dot: 'bg-sky-400' },
@@ -79,6 +78,8 @@ export default function PayPeriodsPage() {
     [draftPeriods, selectedPayPeriodId]
   )
 
+  const planningPeriod = editMode ? draftSelected : selectedPeriod
+
   const periodIndex = useMemo(
     () => payPeriods.findIndex((period) => period.id === selectedPayPeriodId),
     [payPeriods, selectedPayPeriodId]
@@ -91,9 +92,29 @@ export default function PayPeriodsPage() {
   const recurringTotals = getRecurringTotals(periodIndex)
   const cashAppLoad = recurringTotals.groceries + recurringTotals.bus
 
+  const defaultSavingsStart = accounts.find((a) => a.id === 'savings')?.balance ?? 0
+  const defaultCheckingStart = accounts.find((a) => a.id === 'checking')?.balance ?? 0
+  const startSavings = planningPeriod.startingBalances?.savings ?? defaultSavingsStart
+  const startChecking = planningPeriod.startingBalances?.checking ?? defaultCheckingStart
+
+  const baseTransferToChecking =
+    startSavings +
+    planningPeriod.payAmount -
+    planningPeriod.transfers.rent -
+    planningPeriod.transfers.openbank -
+    recurringTotals.fromSavings -
+    SAVINGS_BUFFER
+
+  const baseSpendingPool =
+    startChecking +
+    baseTransferToChecking -
+    recurringTotals.fromChecking -
+    cashAppLoad -
+    CHECKING_BUFFER
+
   const totalRequired =
-    selectedPeriod.transfers.rent +
-    selectedPeriod.transfers.openbank +
+    planningPeriod.transfers.rent +
+    planningPeriod.transfers.openbank +
     recurringTotals.fromSavings +
     recurringTotals.fromChecking +
     cashAppLoad +
@@ -101,22 +122,17 @@ export default function PayPeriodsPage() {
     CHECKING_BUFFER
 
   // Positive: money left to allocate. Negative: shortfall.
-  const remainingPool = selectedPeriod.payAmount - totalRequired
-  const minSpendingForPeriod = remainingPool > 0 ? Math.min(MIN_SPENDING_MONEY, remainingPool) : 0
+  const remainingPool = baseSpendingPool
+  const minSpendingForPeriod = 0
   const maxSpendingForPeriod = remainingPool > 0 ? remainingPool : 0
   const rawSpendingChoice = spendingMoneyByPeriod[selectedPeriod.id]
   const spendingMoneyTarget =
     remainingPool > 0
-      ? Math.max(minSpendingForPeriod, Math.min(maxSpendingForPeriod, rawSpendingChoice ?? minSpendingForPeriod))
+      ? Math.max(minSpendingForPeriod, Math.min(maxSpendingForPeriod, rawSpendingChoice ?? maxSpendingForPeriod))
       : remainingPool
   const extraToOpenbank = remainingPool > 0 ? remainingPool - spendingMoneyTarget : 0
-  const totalOpenbankTransfer = selectedPeriod.transfers.openbank + extraToOpenbank
-  const transferToChecking =
-    selectedPeriod.payAmount -
-    selectedPeriod.transfers.rent -
-    totalOpenbankTransfer -
-    recurringTotals.fromSavings -
-    SAVINGS_BUFFER
+  const totalOpenbankTransfer = planningPeriod.transfers.openbank + extraToOpenbank
+  const transferToChecking = baseTransferToChecking - extraToOpenbank
 
   useEffect(() => {
     if (remainingPool <= 0) return
@@ -125,7 +141,7 @@ export default function PayPeriodsPage() {
       if (prev[selectedPeriod.id] != null) return prev
 
       const selectedIdx = payPeriods.findIndex((period) => period.id === selectedPeriod.id)
-      let suggested = minSpendingForPeriod
+      let suggested = maxSpendingForPeriod
 
       for (let i = selectedIdx - 1; i >= 0; i -= 1) {
         const priorId = payPeriods[i]?.id
@@ -178,19 +194,22 @@ export default function PayPeriodsPage() {
 
       const totals = getRecurringTotals(idx)
       const periodCashAppLoad = totals.groceries + totals.bus
-      const pool =
+      const baseTransfer =
+        (start.savings ?? 0) +
         period.payAmount -
-        (
-          period.transfers.rent +
-          period.transfers.openbank +
-          totals.fromSavings +
-          totals.fromChecking +
-          periodCashAppLoad +
-          SAVINGS_BUFFER +
-          CHECKING_BUFFER
-        )
+        period.transfers.rent -
+        period.transfers.openbank -
+        totals.fromSavings -
+        SAVINGS_BUFFER
 
-      const minSpending = pool > 0 ? Math.min(MIN_SPENDING_MONEY, pool) : 0
+      const pool =
+        (start.checking ?? 0) +
+        baseTransfer -
+        totals.fromChecking -
+        periodCashAppLoad -
+        CHECKING_BUFFER
+
+      const minSpending = 0
       const maxSpending = pool > 0 ? pool : 0
 
       const explicitChoice = spendingMoneyByPeriod[period.id]
@@ -209,7 +228,7 @@ export default function PayPeriodsPage() {
 
       const spendingMoney =
         pool > 0
-          ? Math.max(minSpending, Math.min(maxSpending, explicitChoice ?? historicalChoice ?? minSpending))
+          ? Math.max(minSpending, Math.min(maxSpending, explicitChoice ?? historicalChoice ?? maxSpending))
           : pool
       fallbackChoices[period.id] = spendingMoney
 
@@ -223,8 +242,8 @@ export default function PayPeriodsPage() {
 
       const end = {
         ...start,
-        savings: (start.savings ?? 0) + SAVINGS_BUFFER,
-        checking: (start.checking ?? 0) + CHECKING_BUFFER + (pool > 0 ? spendingMoney : 0),
+        savings: SAVINGS_BUFFER,
+        checking: CHECKING_BUFFER + (pool > 0 ? spendingMoney : 0),
         rentFund: (start.rentFund ?? 0) + period.transfers.rent,
         cashApp: (start.cashApp ?? 0) + periodCashAppLoad - totals.groceries - totals.bus,
         openbank: (start.openbank ?? 0) + totalOpenbankForPeriod,
@@ -976,7 +995,7 @@ function getExpFundingSources(
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Affordability & allocation</p>
-                  <p className="text-xs text-slate-500">Use one slider to move remaining pool between OpenBank and spending money. Spending keeps a minimum floor of $200 when possible.</p>
+                  <p className="text-xs text-slate-500">Use one slider to move your remaining pool between OpenBank and spending money. This now includes your edited starting balances.</p>
                 </div>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${remainingPool >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                   {remainingPool >= 0 ? 'Affordable' : 'Short by'} {remainingPool >= 0 ? `$${remainingPool.toLocaleString()}` : `$${Math.abs(remainingPool).toLocaleString()}`}
@@ -984,14 +1003,15 @@ function getExpFundingSources(
               </div>
 
               <div className="space-y-1.5 text-xs text-slate-600">
-                <div className="flex items-center justify-between"><span>Paycheck</span><span className="font-medium text-slate-900">${selectedPeriod.payAmount.toLocaleString()}</span></div>
-                <div className="flex items-center justify-between"><span>Total required this period (bills + transfers + $200 buffers)</span><span className="font-medium text-slate-900">${totalRequired.toLocaleString()}</span></div>
+                <div className="flex items-center justify-between"><span>Paycheck</span><span className="font-medium text-slate-900">${planningPeriod.payAmount.toLocaleString()}</span></div>
+                <div className="flex items-center justify-between"><span>Starting savings + checking</span><span className="font-medium text-slate-900">${(startSavings + startChecking).toLocaleString()}</span></div>
+                <div className="flex items-center justify-between"><span>Total required this period (bills + transfers + buffers)</span><span className="font-medium text-slate-900">${totalRequired.toLocaleString()}</span></div>
               </div>
 
               {remainingPool >= 0 ? (
                 <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
                   <div className="mb-2 flex items-center justify-between text-xs text-slate-600">
-                    <p>Minimum spending floor: <span className="font-semibold text-slate-900">${minSpendingForPeriod.toLocaleString()}</span></p>
+                    <p>Spending floor: <span className="font-semibold text-slate-900">${minSpendingForPeriod.toLocaleString()}</span></p>
                     <p>Remaining pool: <span className="font-semibold text-slate-900">${remainingPool.toLocaleString()}</span></p>
                   </div>
 
