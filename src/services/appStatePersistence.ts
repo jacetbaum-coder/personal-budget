@@ -1,4 +1,4 @@
-import type { Account, PayPeriod, RecurringExpense, TransactionRecord } from '../models'
+import type { Account, MasterOverrideRecord, PayPeriod, RecurringExpense, TransactionRecord } from '../models'
 import { sampleAccounts, samplePayPeriods, sampleRecurringExpenses } from '../models'
 import { historicalTransactions, historicalPayPeriods } from '../data/historicalData'
 
@@ -13,6 +13,7 @@ export interface PersistedAppStateData {
   payPeriods: PayPeriod[]
   recurringExpenses: RecurringExpense[]
   transactions: TransactionRecord[]
+  masterOverrideRecord: MasterOverrideRecord | null
   selectedPayPeriodId: number
   selectedForecastPointId: number
   extraMoney: number
@@ -37,7 +38,7 @@ const REMOTE_SYNC_ENABLED = import.meta.env.VITE_ENABLE_REMOTE_SYNC === 'true'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const SUPABASE_ROW_ID = import.meta.env.VITE_SUPABASE_APP_STATE_ROW_ID ?? 'default'
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
 
 export function createDefaultPersistedState(): PersistedAppStateData {
   const allPayPeriods = [...historicalPayPeriods, ...samplePayPeriods]
@@ -47,6 +48,7 @@ export function createDefaultPersistedState(): PersistedAppStateData {
     payPeriods: allPayPeriods,
     recurringExpenses: sampleRecurringExpenses,
     transactions: historicalTransactions,
+    masterOverrideRecord: null,
     selectedPayPeriodId: samplePayPeriods[0]?.id ?? 1,
     selectedForecastPointId: 4,
     extraMoney: 520,
@@ -69,6 +71,33 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
+function parseMasterOverrideRecord(value: unknown): MasterOverrideRecord | null {
+  if (!isObject(value)) return null
+  if (typeof value.payPeriodId !== 'number') return null
+  if (typeof value.appliedAt !== 'string') return null
+  if (!isObject(value.accountBalances)) return null
+
+  const accountBalancesEntries = Object.entries(value.accountBalances)
+  if (accountBalancesEntries.length === 0) return null
+
+  const accountBalances = accountBalancesEntries.reduce<Record<string, number>>((acc, [accountId, rawAmount]) => {
+    if (typeof rawAmount === 'number' && Number.isFinite(rawAmount)) {
+      acc[accountId] = rawAmount
+    }
+    return acc
+  }, {})
+
+  if (Object.keys(accountBalances).length === 0) return null
+
+  return {
+    payPeriodId: value.payPeriodId,
+    accountBalances,
+    reason: typeof value.reason === 'string' ? value.reason : undefined,
+    notes: typeof value.notes === 'string' ? value.notes : undefined,
+    appliedAt: value.appliedAt,
+  }
+}
+
 export function mergePersistedState(input: unknown): PersistedAppStateData {
   const defaults = createDefaultPersistedState()
   const raw = isObject(input) ? input : {}
@@ -79,6 +108,7 @@ export function mergePersistedState(input: unknown): PersistedAppStateData {
     payPeriods: Array.isArray(raw.payPeriods) ? (raw.payPeriods as PayPeriod[]) : defaults.payPeriods,
     recurringExpenses: Array.isArray(raw.recurringExpenses) ? (raw.recurringExpenses as RecurringExpense[]) : defaults.recurringExpenses,
     transactions: Array.isArray(raw.transactions) ? (raw.transactions as TransactionRecord[]) : defaults.transactions,
+    masterOverrideRecord: parseMasterOverrideRecord(raw.masterOverrideRecord),
     selectedPayPeriodId: typeof raw.selectedPayPeriodId === 'number' ? raw.selectedPayPeriodId : defaults.selectedPayPeriodId,
     selectedForecastPointId: typeof raw.selectedForecastPointId === 'number' ? raw.selectedForecastPointId : defaults.selectedForecastPointId,
     extraMoney: typeof raw.extraMoney === 'number' ? raw.extraMoney : defaults.extraMoney,

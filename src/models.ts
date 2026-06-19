@@ -141,6 +141,14 @@ export interface ForecastPoint {
   balanceAdjustments: Record<string, number>
 }
 
+export interface MasterOverrideRecord {
+  payPeriodId: number
+  accountBalances: Record<AccountId, number>
+  reason?: string
+  notes?: string
+  appliedAt: string
+}
+
 // ── Actual data ───────────────────────────────────────────────────────────────
 
 export const sampleAccounts: Account[] = [

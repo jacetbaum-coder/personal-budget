@@ -1,9 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Account,
+  AccountId,
   PayPeriod,
   RecurringExpense,
   ForecastPoint,
+  MasterOverrideRecord,
   TransactionRecord,
   sampleAccounts,
   samplePayPeriods,
@@ -34,6 +36,7 @@ export interface AppState {
   recurringExpenses: RecurringExpense[]
   forecastPoints: ForecastPoint[]
   transactions: TransactionRecord[]
+  masterOverrideRecord: MasterOverrideRecord | null
   selectedPayPeriodId: number
   selectedForecastPointId: number
   extraMoney: number
@@ -65,6 +68,13 @@ export interface AppState {
   setCurrency: (currency: string) => void
   setForecastHorizon: (horizon: number) => void
   setNotifications: (notifications: { email: boolean; push: boolean }) => void
+  applyMasterOverride: (input: {
+    payPeriodId: number
+    accountBalances: Record<AccountId, number>
+    reason?: string
+    notes?: string
+  }) => { ok: true } | { ok: false; error: string }
+  clearMasterOverrideRecord: () => void
   getProjectedLeftover: (payPeriod: PayPeriod, totals: ReturnType<typeof getRecurringExpenseTotals>) => number
   getAvailableSpending: (leftover: number) => number
   getSafetyBuffer: () => number
@@ -87,6 +97,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>(initialPersistedState.recurringExpenses)
   const [forecastPoints] = useState<ForecastPoint[]>(sampleForecastPoints)
   const [transactions, rawSetTransactions] = useState<TransactionRecord[]>(initialPersistedState.transactions)
+  const [masterOverrideRecord, setMasterOverrideRecord] = useState<MasterOverrideRecord | null>(initialPersistedState.masterOverrideRecord)
   const [selectedPayPeriodId, setSelectedPayPeriodId] = useState<number>(initialPersistedState.selectedPayPeriodId)
   const [selectedForecastPointId, setSelectedForecastPointId] = useState<number>(initialPersistedState.selectedForecastPointId)
   const [extraMoney, setExtraMoney] = useState<number>(initialPersistedState.extraMoney)
@@ -107,11 +118,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const saveTimeoutRef = useRef<number | null>(null)
 
   const buildPersistedState = (): PersistedAppStateData => ({
-    schemaVersion: 1,
+    schemaVersion: 2,
     accounts,
     payPeriods,
     recurringExpenses,
     transactions,
+    masterOverrideRecord,
     selectedPayPeriodId,
     selectedForecastPointId,
     extraMoney,
@@ -131,6 +143,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setPayPeriods(state.payPeriods)
     setRecurringExpenses(state.recurringExpenses)
     rawSetTransactions(state.transactions)
+    setMasterOverrideRecord(state.masterOverrideRecord)
     setSelectedPayPeriodId(state.selectedPayPeriodId)
     setSelectedForecastPointId(state.selectedForecastPointId)
     setExtraMoney(state.extraMoney)
@@ -224,6 +237,49 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     await syncNow()
   }
 
+  const applyMasterOverride: AppState['applyMasterOverride'] = ({ payPeriodId, accountBalances, reason, notes }) => {
+    const targetPeriod = payPeriods.find((period) => period.id === payPeriodId)
+    if (!targetPeriod) {
+      return { ok: false, error: 'Selected pay period was not found.' }
+    }
+
+    const cleanBalances = Object.entries(accountBalances).reduce<Record<string, number>>((acc, [accountId, value]) => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        acc[accountId] = value
+      }
+      return acc
+    }, {})
+
+    if (Object.keys(cleanBalances).length === 0) {
+      return { ok: false, error: 'Enter at least one valid account balance.' }
+    }
+
+    setPayPeriods((current) =>
+      current.map((period) =>
+        period.id === payPeriodId
+          ? {
+              ...period,
+              startingBalances: cleanBalances,
+            }
+          : period
+      )
+    )
+
+    setMasterOverrideRecord({
+      payPeriodId,
+      accountBalances: cleanBalances,
+      reason: reason?.trim() || undefined,
+      notes: notes?.trim() || undefined,
+      appliedAt: new Date().toISOString(),
+    })
+
+    return { ok: true }
+  }
+
+  const clearMasterOverrideRecord = () => {
+    setMasterOverrideRecord(null)
+  }
+
   useEffect(() => {
     let isCancelled = false
 
@@ -312,6 +368,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     selectedPayDate,
     forecastHorizon,
     notifications,
+    masterOverrideRecord,
     remotePersistenceEnabled
   ])
 
@@ -334,6 +391,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       selectedPayDate,
       forecastHorizon,
       notifications,
+      masterOverrideRecord,
       saveStatus,
       lastSavedAt,
       remotePersistenceEnabled,
@@ -353,6 +411,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setCurrency,
       setForecastHorizon,
       setNotifications,
+      applyMasterOverride,
+      clearMasterOverrideRecord,
       getProjectedLeftover,
       getAvailableSpending,
       getSafetyBuffer,
@@ -382,6 +442,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       selectedPayDate,
       forecastHorizon,
       notifications,
+      masterOverrideRecord,
       saveStatus,
       lastSavedAt,
       remotePersistenceEnabled

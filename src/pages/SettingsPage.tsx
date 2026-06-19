@@ -97,6 +97,9 @@ function getPaydayHighlights(baseDate: string, periodType: string) {
 
 export default function SettingsPage() {
   const {
+    accounts,
+    payPeriods,
+    selectedPayPeriodId,
     defaultPayPeriodLabel,
     defaultPaycheckAmount,
     currency,
@@ -108,6 +111,9 @@ export default function SettingsPage() {
     setSelectedPayDate,
     setForecastHorizon,
     setNotifications,
+    applyMasterOverride,
+    clearMasterOverrideRecord,
+    masterOverrideRecord,
   } = useAppState()
 
   const [editMode, setEditMode] = useState(false)
@@ -116,8 +122,18 @@ export default function SettingsPage() {
   const [draftHorizon, setDraftHorizon] = useState(forecastHorizon)
   const [draftNotifications, setDraftNotifications] = useState(notifications)
   const [draftPaycheckAmount, setDraftPaycheckAmount] = useState<number>(defaultPaycheckAmount)
+  const [revealOverrideForm, setRevealOverrideForm] = useState(false)
+  const [overridePayPeriodId, setOverridePayPeriodId] = useState<number>(selectedPayPeriodId)
+  const [overrideReason, setOverrideReason] = useState('')
+  const [overrideNotes, setOverrideNotes] = useState('')
+  const [overrideConfirmChecked, setOverrideConfirmChecked] = useState(false)
+  const [overrideError, setOverrideError] = useState<string | null>(null)
+  const [overrideDraftBalances, setOverrideDraftBalances] = useState<Record<string, string>>(() =>
+    Object.fromEntries(accounts.map((account) => [account.id, String(account.balance)]))
+  )
   const monthGrid = useMemo(() => buildMonthGrid(draftPayDate), [draftPayDate])
   const highlightedDates = useMemo(() => getPaydayHighlights(draftPayDate, draftPayPeriod), [draftPayDate, draftPayPeriod])
+  const selectedOverridePeriod = payPeriods.find((period) => period.id === overridePayPeriodId) ?? payPeriods[0]
 
   const startEdit = () => {
     setDraftPayPeriod(defaultPayPeriodLabel)
@@ -146,6 +162,42 @@ export default function SettingsPage() {
       return
     }
     setDraftPayDate(date.toISOString().slice(0, 10))
+  }
+
+  const handleOverrideBalanceChange = (accountId: string, value: string) => {
+    setOverrideDraftBalances((current) => ({ ...current, [accountId]: value }))
+    setOverrideError(null)
+  }
+
+  const applyOverrideNow = () => {
+    const parsed = accounts.reduce<Record<string, number>>((acc, account) => {
+      const rawValue = overrideDraftBalances[account.id] ?? '0'
+      const numericValue = Number(rawValue)
+      if (Number.isFinite(numericValue)) {
+        acc[account.id] = numericValue
+      }
+      return acc
+    }, {})
+
+    if (Object.keys(parsed).length !== accounts.length) {
+      setOverrideError('Enter a valid number for every account.')
+      return
+    }
+
+    const result = applyMasterOverride({
+      payPeriodId: selectedOverridePeriod?.id ?? overridePayPeriodId,
+      accountBalances: parsed,
+      reason: overrideReason,
+      notes: overrideNotes,
+    })
+
+    if (!result.ok) {
+      setOverrideError(result.error)
+      return
+    }
+
+    setOverrideConfirmChecked(false)
+    setOverrideError(null)
   }
 
   return (
@@ -322,6 +374,133 @@ export default function SettingsPage() {
                 </label>
               </div>
             </Card>
+
+            <details className="rounded-2xl border border-slate-200 bg-white p-4">
+              <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
+                <div className="flex items-center justify-between">
+                  <span>Advanced</span>
+                  <span className="text-xs font-medium text-slate-500">Hidden tools</span>
+                </div>
+              </summary>
+
+              <div className="mt-4 space-y-4">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  Manual baseline override. Use only when your real balances do not match the model.
+                </div>
+
+                {!revealOverrideForm ? (
+                  <button
+                    type="button"
+                    onClick={() => setRevealOverrideForm(true)}
+                    className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Reveal master override
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Apply to period</label>
+                      <select
+                        value={overridePayPeriodId}
+                        onChange={(event) => setOverridePayPeriodId(Number(event.target.value))}
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      >
+                        {payPeriods.map((period) => (
+                          <option key={period.id} value={period.id}>
+                            {period.label} ({period.payDate})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      {accounts.map((account) => (
+                        <label key={account.id} className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                          <span>{account.name}</span>
+                          <input
+                            type="number"
+                            value={overrideDraftBalances[account.id] ?? ''}
+                            onChange={(event) => handleOverrideBalanceChange(account.id, event.target.value)}
+                            className="w-36 rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-right text-sm text-slate-900"
+                          />
+                        </label>
+                      ))}
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Reason (optional)</label>
+                      <input
+                        type="text"
+                        value={overrideReason}
+                        onChange={(event) => setOverrideReason(event.target.value)}
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Notes (optional)</label>
+                      <textarea
+                        value={overrideNotes}
+                        onChange={(event) => setOverrideNotes(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      />
+                    </div>
+
+                    <label className="flex items-start gap-2 text-xs text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={overrideConfirmChecked}
+                        onChange={(event) => setOverrideConfirmChecked(event.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                      />
+                      I understand this sets manual starting balances even if numbers do not add up.
+                    </label>
+
+                    {overrideError ? (
+                      <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{overrideError}</p>
+                    ) : null}
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={applyOverrideNow}
+                        disabled={!overrideConfirmChecked}
+                        className="rounded-2xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-800"
+                      >
+                        Apply override
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRevealOverrideForm(false)
+                          setOverrideConfirmChecked(false)
+                          setOverrideError(null)
+                        }}
+                        className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Hide
+                      </button>
+                    </div>
+
+                    {masterOverrideRecord ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                        <p className="font-semibold text-slate-900">Last override applied</p>
+                        <p className="mt-1">Period: {payPeriods.find((period) => period.id === masterOverrideRecord.payPeriodId)?.label ?? masterOverrideRecord.payPeriodId}</p>
+                        <p>Time: {formatSaveTime(masterOverrideRecord.appliedAt)}</p>
+                        <button
+                          type="button"
+                          onClick={clearMasterOverrideRecord}
+                          className="mt-2 rounded-xl border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          Clear override record
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            </details>
           </div>
         </div>
       </Section>
