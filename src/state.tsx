@@ -8,6 +8,7 @@ import {
   RecurringExpense,
   ForecastPoint,
   MasterOverrideRecord,
+  OverrideEntryStage,
   TransactionRecord,
   sampleAccounts,
   samplePayPeriods,
@@ -77,6 +78,7 @@ export interface AppState {
     paidExpenseIds: number[]
     unpaidExpenseIds: number[]
     forcedSpendingMoneyTarget?: number
+    entryStage: OverrideEntryStage
     reason?: string
     notes?: string
   }) => { ok: true } | { ok: false; error: string }
@@ -277,6 +279,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     paidExpenseIds,
     unpaidExpenseIds,
     forcedSpendingMoneyTarget,
+    entryStage,
     reason,
     notes,
   }) => {
@@ -341,6 +344,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       paidExpenseIds: cleanPaidExpenseIds,
       unpaidExpenseIds: cleanUnpaidExpenseIds,
       forcedSpendingMoneyTarget: cleanSpendingTarget,
+      entryStage,
       reason: reason?.trim() || undefined,
       notes: notes?.trim() || undefined,
       appliedAt: new Date().toISOString(),

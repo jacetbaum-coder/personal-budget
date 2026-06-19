@@ -45,6 +45,7 @@ export default function DashboardPage() {
     selectedPayPeriodId,
     getExpenseSettlementStatus,
     getRecurringTotals,
+    masterOverrideRecord,
   } = useAppState()
 
   if (payPeriods.length === 0) {
@@ -72,19 +73,30 @@ export default function DashboardPage() {
   const savingsExpensesTotal = recurringTotals.fromSavings
   const subscriptionTotal = recurringTotals.fromChecking
 
+  const activeOverride =
+    masterOverrideRecord?.payPeriodId === selectedPeriod.id ? masterOverrideRecord : null
+  const entryStage = activeOverride?.entryStage ?? 'prePaycheck'
+  const stagePaycheck = entryStage === 'prePaycheck' ? selectedPeriod.payAmount : 0
+  const stageRent = (entryStage === 'prePaycheck' || entryStage === 'paycheckLanded') ? selectedPeriod.transfers.rent : 0
+  const stageOpenbank = (entryStage === 'prePaycheck' || entryStage === 'paycheckLanded') ? selectedPeriod.transfers.openbank : 0
+  const stageSavingsBills = entryStage !== 'afterAll' ? savingsExpensesTotal : 0
+
   const baseTransferToCheckings =
     startSavings +
-    selectedPeriod.payAmount -
-    selectedPeriod.transfers.rent -
-    selectedPeriod.transfers.openbank -
-    savingsExpensesTotal -
+    stagePaycheck -
+    stageRent -
+    stageOpenbank -
+    stageSavingsBills -
     SAVINGS_BUFFER
+
+  const stageCheckingBills = entryStage !== 'afterAll' ? subscriptionTotal : 0
+  const stageCashApp = entryStage !== 'afterAll' ? cashAppTransfer : 0
 
   const remainingPool =
     startChecking +
     baseTransferToCheckings -
-    subscriptionTotal -
-    cashAppTransfer -
+    stageCheckingBills -
+    stageCashApp -
     CHECKING_BUFFER
 
   const maxSpendingForPeriod = remainingPool > 0 ? remainingPool : 0

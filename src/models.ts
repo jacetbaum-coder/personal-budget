@@ -141,12 +141,15 @@ export interface ForecastPoint {
   balanceAdjustments: Record<string, number>
 }
 
+export type OverrideEntryStage = 'prePaycheck' | 'paycheckLanded' | 'afterRentOpenbank' | 'afterAll'
+
 export interface MasterOverrideRecord {
   payPeriodId: number
   accountBalances: Record<AccountId, number>
   paidExpenseIds: number[]
   unpaidExpenseIds: number[]
   forcedSpendingMoneyTarget?: number
+  entryStage: OverrideEntryStage
   reason?: string
   notes?: string
   appliedAt: string

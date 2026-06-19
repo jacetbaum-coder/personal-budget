@@ -1,4 +1,4 @@
-import type { Account, MasterOverrideRecord, PayPeriod, PeriodExpenseOverrides, RecurringExpense, TransactionRecord } from '../models'
+import type { Account, MasterOverrideRecord, OverrideEntryStage, PayPeriod, PeriodExpenseOverrides, RecurringExpense, TransactionRecord } from '../models'
 import { sampleAccounts, samplePayPeriods, sampleRecurringExpenses } from '../models'
 import { historicalTransactions, historicalPayPeriods } from '../data/historicalData'
 
@@ -39,7 +39,7 @@ const REMOTE_SYNC_ENABLED = import.meta.env.VITE_ENABLE_REMOTE_SYNC === 'true'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const SUPABASE_ROW_ID = import.meta.env.VITE_SUPABASE_APP_STATE_ROW_ID ?? 'default'
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 export function createDefaultPersistedState(): PersistedAppStateData {
   const allPayPeriods = [...historicalPayPeriods, ...samplePayPeriods]
@@ -103,12 +103,19 @@ function parseMasterOverrideRecord(value: unknown): MasterOverrideRecord | null 
       ? value.forcedSpendingMoneyTarget
       : undefined
 
+  const validStages: OverrideEntryStage[] = ['prePaycheck', 'paycheckLanded', 'afterRentOpenbank', 'afterAll']
+  const entryStage: OverrideEntryStage =
+    typeof value.entryStage === 'string' && validStages.includes(value.entryStage as OverrideEntryStage)
+      ? (value.entryStage as OverrideEntryStage)
+      : 'prePaycheck'
+
   return {
     payPeriodId: value.payPeriodId,
     accountBalances,
     paidExpenseIds,
     unpaidExpenseIds,
     forcedSpendingMoneyTarget,
+    entryStage,
     reason: typeof value.reason === 'string' ? value.reason : undefined,
     notes: typeof value.notes === 'string' ? value.notes : undefined,
     appliedAt: value.appliedAt,

@@ -4,6 +4,7 @@ import Section from '../components/Section'
 import { useAppState } from '../state'
 import { isRecurringExpenseDue } from '../recurring'
 import { SAVINGS_BUFFER, CHECKING_BUFFER } from '../calculations'
+import type { OverrideEntryStage } from '../models'
 
 const payPeriodOptions = ['Weekly', 'Biweekly', 'Monthly'] as const
 const forecastHorizonOptions = [
@@ -128,6 +129,7 @@ export default function SettingsPage() {
   const [draftPaycheckAmount, setDraftPaycheckAmount] = useState<number>(defaultPaycheckAmount)
   const [revealOverrideForm, setRevealOverrideForm] = useState(false)
   const [overridePayPeriodId, setOverridePayPeriodId] = useState<number>(selectedPayPeriodId)
+  const [overrideEntryStage, setOverrideEntryStage] = useState<OverrideEntryStage>('prePaycheck')
   const [overrideReason, setOverrideReason] = useState('')
   const [overrideNotes, setOverrideNotes] = useState('')
   const [overrideForcedSpending, setOverrideForcedSpending] = useState('')
@@ -174,10 +176,17 @@ export default function SettingsPage() {
   const overridePayAmount = selectedOverridePeriod?.payAmount ?? 0
   const overrideRentTransfer = selectedOverridePeriod?.transfers.rent ?? 0
   const overrideBaseOpenbankTransfer = selectedOverridePeriod?.transfers.openbank ?? 0
+  // Adjust formula based on what's already been done when the user is entering balances
+  const stagePaycheck = overrideEntryStage === 'prePaycheck' ? overridePayAmount : 0
+  const stageRent = (overrideEntryStage === 'prePaycheck' || overrideEntryStage === 'paycheckLanded') ? overrideRentTransfer : 0
+  const stageOpenbank = (overrideEntryStage === 'prePaycheck' || overrideEntryStage === 'paycheckLanded') ? overrideBaseOpenbankTransfer : 0
+  const stageSavingsBills = overrideEntryStage !== 'afterAll' ? unpaidSavingsTotal : 0
   const previewBaseTransferToChecking =
-    previewSavings + overridePayAmount - overrideRentTransfer - overrideBaseOpenbankTransfer - unpaidSavingsTotal - SAVINGS_BUFFER
+    previewSavings + stagePaycheck - stageRent - stageOpenbank - stageSavingsBills - SAVINGS_BUFFER
+  const stageCheckingBills = overrideEntryStage !== 'afterAll' ? unpaidCheckingTotal : 0
+  const stageCashApp = overrideEntryStage !== 'afterAll' ? unpaidCashAppTotal : 0
   const previewPool =
-    previewChecking + previewBaseTransferToChecking - unpaidCheckingTotal - unpaidCashAppTotal - CHECKING_BUFFER
+    previewChecking + previewBaseTransferToChecking - stageCheckingBills - stageCashApp - CHECKING_BUFFER
   const forcedSpendingNum =
     overrideForcedSpending.trim() !== '' && Number.isFinite(Number(overrideForcedSpending))
       ? Math.max(0, Number(overrideForcedSpending))
@@ -248,6 +257,7 @@ export default function SettingsPage() {
       unpaidExpenseIds: unpaidDueExpenses.map((expense) => expense.id),
       forcedSpendingMoneyTarget:
         overrideForcedSpending.trim() === '' ? undefined : Number(overrideForcedSpending),
+      entryStage: overrideEntryStage,
       reason: overrideReason,
       notes: overrideNotes,
     })
@@ -472,6 +482,41 @@ export default function SettingsPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">When are you entering these balances?</label>
+                      <div className="space-y-1.5">
+                        {([
+                          { value: 'prePaycheck',       label: 'Before paycheck lands',      desc: "Paycheck hasn't hit yet — these are pre-payday balances" },
+                          { value: 'paycheckLanded',    label: 'Paycheck just landed',        desc: 'Check arrived, nothing moved yet' },
+                          { value: 'afterRentOpenbank', label: 'Rent + OpenBank already moved', desc: "I've already transferred rent and OpenBank" },
+                          { value: 'afterAll',          label: 'All transfers done',           desc: 'Everything moved — just reconciling what remains' },
+                        ] as { value: OverrideEntryStage; label: string; desc: string }[]).map(({ value, label, desc }) => (
+                          <label key={value} className={`flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2 text-xs ${
+                            overrideEntryStage === value
+                              ? 'border-slate-900 bg-slate-900 text-white'
+                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          }`}>
+                            <input
+                              type="radio"
+                              name="overrideEntryStage"
+                              value={value}
+                              checked={overrideEntryStage === value}
+                              onChange={() => setOverrideEntryStage(value)}
+                              className="sr-only"
+                            />
+                            <span className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 flex items-center justify-center"
+                              style={overrideEntryStage === value ? { borderColor: 'white' } : { borderColor: '#94a3b8' }}>
+                              {overrideEntryStage === value && <span className="h-1.5 w-1.5 rounded-full bg-white block" />}
+                            </span>
+                            <span>
+                              <span className="font-semibold">{label}</span>
+                              <span className={`ml-1 ${overrideEntryStage === value ? 'text-slate-300' : 'text-slate-400'}`}>— {desc}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="space-y-2">

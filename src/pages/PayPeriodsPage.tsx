@@ -53,6 +53,7 @@ export default function PayPeriodsPage() {
     setSelectedPayPeriodId,
     getExpenseSettlementStatus,
     getRecurringTotals,
+    masterOverrideRecord,
   } = useAppState()
 
   // ── Pay-period edit state ──────────────────────────────────────────────────
@@ -98,19 +99,30 @@ export default function PayPeriodsPage() {
   const startSavings = planningPeriod.startingBalances?.savings ?? defaultSavingsStart
   const startChecking = planningPeriod.startingBalances?.checking ?? defaultCheckingStart
 
+  const activeOverride =
+    masterOverrideRecord?.payPeriodId === selectedPeriod.id ? masterOverrideRecord : null
+  const entryStage = activeOverride?.entryStage ?? 'prePaycheck'
+  const stagePaycheck = entryStage === 'prePaycheck' ? planningPeriod.payAmount : 0
+  const stageRent = (entryStage === 'prePaycheck' || entryStage === 'paycheckLanded') ? planningPeriod.transfers.rent : 0
+  const stageOpenbank = (entryStage === 'prePaycheck' || entryStage === 'paycheckLanded') ? planningPeriod.transfers.openbank : 0
+  const stageSavingsBills = entryStage !== 'afterAll' ? recurringTotals.fromSavings : 0
+
   const baseTransferToChecking =
     startSavings +
-    planningPeriod.payAmount -
-    planningPeriod.transfers.rent -
-    planningPeriod.transfers.openbank -
-    recurringTotals.fromSavings -
+    stagePaycheck -
+    stageRent -
+    stageOpenbank -
+    stageSavingsBills -
     SAVINGS_BUFFER
+
+  const stageCheckingBills = entryStage !== 'afterAll' ? recurringTotals.fromChecking : 0
+  const stageCashApp = entryStage !== 'afterAll' ? cashAppLoad : 0
 
   const baseSpendingPool =
     startChecking +
     baseTransferToChecking -
-    recurringTotals.fromChecking -
-    cashAppLoad -
+    stageCheckingBills -
+    stageCashApp -
     CHECKING_BUFFER
 
   const totalRequired =
