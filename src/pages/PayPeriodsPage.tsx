@@ -85,8 +85,8 @@ export default function PayPeriodsPage() {
     [payPeriods, selectedPayPeriodId]
   )
 
-  // User-controlled spending amount from the positive remaining pool for each period.
-  const [spendingMoneyByPeriod, setSpendingMoneyByPeriod] = useState<Record<number, number>>({})
+  // Unsaved slider movements before explicit save.
+  const [pendingSpendingByPeriod, setPendingSpendingByPeriod] = useState<Record<number, number>>({})
   const [showStartingBalances, setShowStartingBalances] = useState(false)
 
   const recurringTotals = getRecurringTotals(periodIndex)
@@ -125,7 +125,8 @@ export default function PayPeriodsPage() {
   const remainingPool = baseSpendingPool
   const minSpendingForPeriod = 0
   const maxSpendingForPeriod = remainingPool > 0 ? remainingPool : 0
-  const rawSpendingChoice = spendingMoneyByPeriod[selectedPeriod.id]
+  const savedSpendingChoice = selectedPeriod.spendingMoneyTarget
+  const rawSpendingChoice = pendingSpendingByPeriod[selectedPeriod.id] ?? savedSpendingChoice
   const spendingMoneyTarget =
     remainingPool > 0
       ? Math.max(minSpendingForPeriod, Math.min(maxSpendingForPeriod, rawSpendingChoice ?? maxSpendingForPeriod))
@@ -134,28 +135,45 @@ export default function PayPeriodsPage() {
   const totalOpenbankTransfer = planningPeriod.transfers.openbank + extraToOpenbank
   const transferToChecking = baseTransferToChecking - extraToOpenbank
 
-  useEffect(() => {
-    if (remainingPool <= 0) return
+  const isAllocationLocked = selectedPeriod.spendingMoneyLocked === true
+  const savedSpendingClamped =
+    remainingPool > 0
+      ? Math.max(minSpendingForPeriod, Math.min(maxSpendingForPeriod, savedSpendingChoice ?? maxSpendingForPeriod))
+      : remainingPool
+  const hasPendingSliderValue = pendingSpendingByPeriod[selectedPeriod.id] != null
+  const hasUnsavedAllocation = hasPendingSliderValue && spendingMoneyTarget !== savedSpendingClamped
 
-    setSpendingMoneyByPeriod((prev) => {
-      if (prev[selectedPeriod.id] != null) return prev
+  const setOrUnlockAllocation = () => {
+    if (editMode) return
 
-      const selectedIdx = payPeriods.findIndex((period) => period.id === selectedPeriod.id)
-      let suggested = maxSpendingForPeriod
+    if (isAllocationLocked) {
+      setPayPeriods(
+        payPeriods.map((period) =>
+          period.id === selectedPeriod.id
+            ? { ...period, spendingMoneyLocked: false }
+            : period
+        )
+      )
+      return
+    }
 
-      for (let i = selectedIdx - 1; i >= 0; i -= 1) {
-        const priorId = payPeriods[i]?.id
-        if (priorId == null) continue
-        const priorChoice = prev[priorId]
-        if (typeof priorChoice === 'number') {
-          suggested = Math.max(minSpendingForPeriod, Math.min(maxSpendingForPeriod, priorChoice))
-          break
-        }
-      }
+    setPayPeriods(
+      payPeriods.map((period) =>
+        period.id === selectedPeriod.id
+          ? {
+              ...period,
+              spendingMoneyTarget: spendingMoneyTarget,
+              spendingMoneyLocked: true,
+            }
+          : period
+      )
+    )
 
-      return { ...prev, [selectedPeriod.id]: suggested }
+    setPendingSpendingByPeriod((prev) => {
+      const { [selectedPeriod.id]: _ignored, ...rest } = prev
+      return rest
     })
-  }, [maxSpendingForPeriod, minSpendingForPeriod, payPeriods, remainingPool, selectedPeriod.id])
+  }
 
   // ── Account snapshot slider (before payday → payday hit → after moves) ───
   const [accountSnapshotStage, setAccountSnapshotStage] = useState<0 | 1 | 2>(2)
@@ -212,14 +230,18 @@ export default function PayPeriodsPage() {
       const minSpending = 0
       const maxSpending = pool > 0 ? pool : 0
 
-      const explicitChoice = spendingMoneyByPeriod[period.id]
+      const explicitChoice =
+        period.id === selectedPeriod.id
+          ? (pendingSpendingByPeriod[selectedPeriod.id] ?? period.spendingMoneyTarget)
+          : period.spendingMoneyTarget
       let historicalChoice: number | undefined
       for (let priorIdx = idx - 1; priorIdx >= 0; priorIdx -= 1) {
         const priorId = payPeriods[priorIdx]?.id
         if (priorId == null) continue
-        const priorFromUser = spendingMoneyByPeriod[priorId]
+        const priorFromSaved = payPeriods[priorIdx]?.spendingMoneyTarget
         const priorFromFallback = fallbackChoices[priorId]
-        const candidate = priorFromUser ?? priorFromFallback
+        const priorFromPending = pendingSpendingByPeriod[priorId]
+        const candidate = priorFromPending ?? priorFromSaved ?? priorFromFallback
         if (typeof candidate === 'number') {
           historicalChoice = candidate
           break
@@ -263,7 +285,7 @@ export default function PayPeriodsPage() {
     }
 
     return snapshots
-  }, [accounts, getRecurringTotals, payPeriods, spendingMoneyByPeriod])
+  }, [accounts, getRecurringTotals, payPeriods, pendingSpendingByPeriod, selectedPeriod.id])
 
   const selectedSnapshot = cycleSnapshots.get(selectedPeriod.id)
   const accountSnapshots = selectedSnapshot
@@ -995,7 +1017,7 @@ function getExpFundingSources(
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Affordability & allocation</p>
-                  <p className="text-xs text-slate-500">Use one slider to move your remaining pool between OpenBank and spending money. This now includes your edited starting balances.</p>
+                  <p className="text-xs text-slate-500">Split the remaining pool between OpenBank and spending.</p>
                 </div>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${remainingPool >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                   {remainingPool >= 0 ? 'Affordable' : 'Short by'} {remainingPool >= 0 ? `$${remainingPool.toLocaleString()}` : `$${Math.abs(remainingPool).toLocaleString()}`}
@@ -1011,8 +1033,17 @@ function getExpFundingSources(
               {remainingPool >= 0 ? (
                 <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
                   <div className="mb-2 flex items-center justify-between text-xs text-slate-600">
-                    <p>Spending floor: <span className="font-semibold text-slate-900">${minSpendingForPeriod.toLocaleString()}</span></p>
-                    <p>Remaining pool: <span className="font-semibold text-slate-900">${remainingPool.toLocaleString()}</span></p>
+                    <p>Pool: <span className="font-semibold text-slate-900">${remainingPool.toLocaleString()}</span></p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={setOrUnlockAllocation}
+                        disabled={editMode || (remainingPool <= 0 && !isAllocationLocked)}
+                        className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50"
+                      >
+                        {isAllocationLocked ? 'Unlock' : 'Set'}
+                      </button>
+                    </div>
                   </div>
 
                   <input
@@ -1021,13 +1052,22 @@ function getExpFundingSources(
                     max={maxSpendingForPeriod}
                     step={1}
                     value={remainingPool > 0 ? spendingMoneyTarget : 0}
-                    onChange={(e) => setSpendingMoneyByPeriod((prev) => ({ ...prev, [selectedPeriod.id]: Number(e.target.value) }))}
+                    onChange={(e) => setPendingSpendingByPeriod((prev) => ({ ...prev, [selectedPeriod.id]: Number(e.target.value) }))}
                     className="w-full accent-slate-900"
-                    disabled={remainingPool <= 0}
+                    disabled={remainingPool <= 0 || isAllocationLocked || editMode}
                   />
                   <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
                     <p>Extra to OpenBank: <span className="font-semibold text-emerald-700">${extraToOpenbank.toLocaleString()}</span></p>
                     <p>Spending money: <span className="font-semibold text-slate-900">${spendingMoneyTarget.toLocaleString()}</span></p>
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    {editMode
+                      ? 'Finish period edits to set allocation.'
+                      : isAllocationLocked
+                        ? 'Locked.'
+                        : hasUnsavedAllocation
+                          ? 'Unsaved change. Click Set.'
+                          : 'Ready. Click Set to lock.'}
                   </div>
                 </div>
               ) : (

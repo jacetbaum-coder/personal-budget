@@ -31,6 +31,10 @@ export interface PayPeriod {
   payAmount: number
   /** Optional per-account starting balances before paycheck lands for this period. */
   startingBalances?: Record<AccountId, number>
+  /** Saved spending target for this period's allocation slider. */
+  spendingMoneyTarget?: number
+  /** Prevent accidental slider movement when true. */
+  spendingMoneyLocked?: boolean
   transfers: {
     rent: number
     openbank: number
