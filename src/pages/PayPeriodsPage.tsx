@@ -51,6 +51,7 @@ export default function PayPeriodsPage() {
     setRecurringExpenses,
     selectedPayPeriodId,
     setSelectedPayPeriodId,
+    getExpenseSettlementStatus,
     getRecurringTotals,
   } = useAppState()
 
@@ -588,6 +589,8 @@ function getExpFundingSources(
 
   const renderExpRow = (expense: RecurringExpense) => {
     const due = isRecurringExpenseDue(expense, periodIndex, payPeriods)
+    const settledAsPaid = getExpenseSettlementStatus(selectedPeriod.id, expense.id) === 'paidAlready'
+    const dueAfterSettlement = due && !settledAsPaid
     if (editingId === expense.id && draftExp) {
       const origAmount = recurringExpenses.find((e) => e.id === expense.id)?.amount ?? 0
       const editDelta = draftExp.amount - origAmount
@@ -669,14 +672,16 @@ function getExpFundingSources(
     return (
       <div
         key={expense.id}
-        className={`flex items-center gap-3 rounded-xl border-l-4 pl-3 pr-4 py-2.5 text-sm ${getColorClasses(accounts.find((a) => a.id === expense.sourceAccount)?.color).border} ${expense.active === false ? 'bg-white opacity-40' : due ? 'bg-slate-50' : 'bg-white opacity-50'}`}
+        className={`flex items-center gap-3 rounded-xl border-l-4 pl-3 pr-4 py-2.5 text-sm ${getColorClasses(accounts.find((a) => a.id === expense.sourceAccount)?.color).border} ${expense.active === false ? 'bg-white opacity-40' : dueAfterSettlement ? 'bg-slate-50' : 'bg-white opacity-50'}`}
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="truncate font-medium text-slate-900">{expense.name}</p>
             {expense.active === false
               ? <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">paused</span>
-              : due && <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">due</span>}
+              : settledAsPaid
+                ? <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">paid</span>
+                : dueAfterSettlement && <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">due</span>}
           </div>
           <p className="mt-0.5 text-xs text-slate-400">
             {expense.frequency}{expense.dueDate ? <span className="ml-1 text-slate-300"> · due {expense.dueDate}</span> : null}
@@ -1158,7 +1163,7 @@ function getExpFundingSources(
                 const cashAppExps = accountId === 'checking' ? byAccount('cashApp') : []
                 // total due this period for this group (including sub-groups for checking)
                 const dueTotal = [...groupExps, ...(accountId === 'checking' ? cashAppExps : [])]
-                  .filter((e) => isRecurringExpenseDue(e, periodIndex, payPeriods))
+                  .filter((e) => isRecurringExpenseDue(e, periodIndex, payPeriods) && getExpenseSettlementStatus(selectedPeriod.id, e.id) !== 'paidAlready')
                   .reduce((s, e) => s + e.amount, 0)
 
                 return (
