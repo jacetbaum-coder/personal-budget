@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import Card from '../components/Card'
 import Section from '../components/Section'
 import Sparkline from '../components/Sparkline'
@@ -20,6 +20,20 @@ function paydayBadge(dateStr: string): string {
   if (days === 1) return 'Payday tomorrow'
   if (days > 0) return `Payday in ${days}d`
   return `Paid ${Math.abs(days)}d ago`
+}
+
+const CHECKLIST_STORAGE_PREFIX = 'budget-os/checklist'
+
+function readChecklistSteps(payPeriodId: number, autoStep1: boolean): Set<number> {
+  try {
+    const raw = localStorage.getItem(`${CHECKLIST_STORAGE_PREFIX}/${payPeriodId}`)
+    if (!raw) return autoStep1 ? new Set([1]) : new Set()
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return autoStep1 ? new Set([1]) : new Set()
+    return new Set(parsed.filter((value) => typeof value === 'number'))
+  } catch {
+    return autoStep1 ? new Set([1]) : new Set()
+  }
 }
 
 export default function DashboardPage() {
@@ -117,7 +131,19 @@ export default function DashboardPage() {
 
   // Step 1 auto-done on/after payday; steps 2-6 user-controlled
   const autoStep1 = isToday || daysUntilPayday(selectedPeriod.payDate) < 0
-  const [doneSteps, setDoneSteps] = useState<Set<number>>(() => autoStep1 ? new Set([1]) : new Set())
+  const [doneSteps, setDoneSteps] = useState<Set<number>>(() => readChecklistSteps(selectedPeriod.id, autoStep1))
+
+  useEffect(() => {
+    setDoneSteps(readChecklistSteps(selectedPeriod.id, autoStep1))
+  }, [selectedPeriod.id, autoStep1])
+
+  useEffect(() => {
+    localStorage.setItem(
+      `${CHECKLIST_STORAGE_PREFIX}/${selectedPeriod.id}`,
+      JSON.stringify(Array.from(doneSteps.values()).sort((a, b) => a - b)),
+    )
+  }, [selectedPeriod.id, doneSteps])
+
   const toggleStep = (n: number) => setDoneSteps((prev) => {
     const next = new Set(prev)
     next.has(n) ? next.delete(n) : next.add(n)

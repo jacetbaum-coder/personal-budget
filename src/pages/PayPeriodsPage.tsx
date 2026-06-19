@@ -208,7 +208,7 @@ export default function PayPeriodsPage() {
       }
 
       const overrides = period.startingBalances ?? {}
-      const start = { ...defaultStart, ...overrides }
+      const start: Record<string, number> = { ...defaultStart, ...overrides, spending: 0 }
 
       const totals = getRecurringTotals(idx)
       const periodCashAppLoad = totals.groceries + totals.bus
@@ -257,12 +257,13 @@ export default function PayPeriodsPage() {
       const extraOpenbankForPeriod = pool > 0 ? pool - spendingMoney : 0
       const totalOpenbankForPeriod = period.transfers.openbank + extraOpenbankForPeriod
 
-      const payday = {
+      const payday: Record<string, number> = {
         ...start,
         savings: (start.savings ?? 0) + period.payAmount,
+        spending: 0,
       }
 
-      const end = {
+      const end: Record<string, number> = {
         ...start,
         savings: SAVINGS_BUFFER,
         checking: CHECKING_BUFFER + (pool > 0 ? spendingMoney : 0),
@@ -296,7 +297,7 @@ export default function PayPeriodsPage() {
         { savings: 0, checking: 0, rentFund: 0, cashApp: 0, openbank: 0, spending: 0 },
       ] as const
 
-  const snapshotStageLabels = ['Before payday', 'Paycheck landed', 'After moves'] as const
+  const snapshotStageLabels = ['Before', 'Payday', 'After'] as const
   const currentSnapshot = accountSnapshots[accountSnapshotStage]
 
   const shortfall = Math.max(0, -remainingPool)
@@ -928,7 +929,7 @@ function getExpFundingSources(
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Account targets</p>
-                    <p className="mt-1 text-xs text-slate-500">Slide to preview balances before payday, right when paycheck lands, and after you move everything.</p>
+                    <p className="mt-1 text-xs text-slate-500">Slide to preview balances across stages.</p>
                   </div>
                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600 border border-slate-200">
                     {snapshotStageLabels[accountSnapshotStage]}
@@ -963,8 +964,9 @@ function getExpFundingSources(
                     { id: 'spending', label: 'Spending Money', value: currentSnapshot.spending, dot: 'bg-slate-400' },
                     { id: 'openbank', label: 'OpenBank', value: currentSnapshot.openbank, dot: 'bg-emerald-400' },
                   ].map((row) => {
-                    const beforeValue = accountSnapshots[0][row.id as keyof typeof accountSnapshots[0]]
-                    const delta = row.value - Number(beforeValue)
+                    const beforeValue = Number(accountSnapshots[0][row.id as keyof typeof accountSnapshots[0]] ?? 0)
+                    const rowValue = Number(row.value ?? 0)
+                    const delta = rowValue - beforeValue
                     return (
                       <div key={row.id} className="flex items-center justify-between rounded-xl bg-white border border-slate-100 px-3 py-2">
                         <p className="flex items-center gap-2 text-slate-600">
@@ -972,7 +974,7 @@ function getExpFundingSources(
                           <span className="text-xs font-medium">{row.label}</span>
                         </p>
                         <div className="text-right">
-                          <p className="text-sm font-semibold text-slate-900">${row.value.toLocaleString()}</p>
+                          <p className="text-sm font-semibold text-slate-900">${rowValue.toLocaleString()}</p>
                           <p className={`text-[11px] ${delta === 0 ? 'text-slate-400' : delta > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                             {delta === 0 ? 'No change' : `${delta > 0 ? '+' : '−'}$${Math.abs(delta).toLocaleString()} vs before`}
                           </p>
@@ -1016,18 +1018,17 @@ function getExpFundingSources(
             <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">Affordability & allocation</p>
-                  <p className="text-xs text-slate-500">Split the remaining pool between OpenBank and spending.</p>
+                  <p className="text-sm font-semibold text-slate-900">Allocation</p>
                 </div>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${remainingPool >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                  {remainingPool >= 0 ? 'Affordable' : 'Short by'} {remainingPool >= 0 ? `$${remainingPool.toLocaleString()}` : `$${Math.abs(remainingPool).toLocaleString()}`}
+                  {remainingPool >= 0 ? 'Left' : 'Short'} {remainingPool >= 0 ? `$${remainingPool.toLocaleString()}` : `$${Math.abs(remainingPool).toLocaleString()}`}
                 </span>
               </div>
 
               <div className="space-y-1.5 text-xs text-slate-600">
                 <div className="flex items-center justify-between"><span>Paycheck</span><span className="font-medium text-slate-900">${planningPeriod.payAmount.toLocaleString()}</span></div>
-                <div className="flex items-center justify-between"><span>Starting savings + checking</span><span className="font-medium text-slate-900">${(startSavings + startChecking).toLocaleString()}</span></div>
-                <div className="flex items-center justify-between"><span>Total required this period (bills + transfers + buffers)</span><span className="font-medium text-slate-900">${totalRequired.toLocaleString()}</span></div>
+                <div className="flex items-center justify-between"><span>Starting balances</span><span className="font-medium text-slate-900">${(startSavings + startChecking).toLocaleString()}</span></div>
+                <div className="flex items-center justify-between"><span>Required total</span><span className="font-medium text-slate-900">${totalRequired.toLocaleString()}</span></div>
               </div>
 
               {remainingPool >= 0 ? (
