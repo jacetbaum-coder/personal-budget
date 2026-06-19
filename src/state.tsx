@@ -310,8 +310,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           ? {
               ...period,
               startingBalances: cleanBalances,
-              spendingMoneyTarget: cleanSpendingTarget ?? period.spendingMoneyTarget,
-              spendingMoneyLocked: cleanSpendingTarget != null ? true : period.spendingMoneyLocked,
+              // If no forced spending target, clear the old locked allocation so it
+              // recalculates fresh from the real balances — otherwise the stale split
+              // can make the transfer to Checkings negative.
+              spendingMoneyTarget: cleanSpendingTarget,
+              spendingMoneyLocked: cleanSpendingTarget != null,
             }
           : period
       )

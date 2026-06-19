@@ -176,6 +176,20 @@ export default function PayPeriodsPage() {
     })
   }
 
+  const resetAllocation = () => {
+    setPayPeriods(
+      payPeriods.map((period) =>
+        period.id === selectedPeriod.id
+          ? { ...period, spendingMoneyTarget: undefined, spendingMoneyLocked: false }
+          : period
+      )
+    )
+    setPendingSpendingByPeriod((prev) => {
+      const { [selectedPeriod.id]: _ignored, ...rest } = prev
+      return rest
+    })
+  }
+
   // ── Account snapshot slider (before payday → payday hit → after moves) ───
   const [accountSnapshotStage, setAccountSnapshotStage] = useState<0 | 1 | 2>(2)
 
@@ -1041,6 +1055,15 @@ function getExpFundingSources(
                   <div className="mb-2 flex items-center justify-between text-xs text-slate-600">
                     <p>Pool: <span className="font-semibold text-slate-900">${remainingPool.toLocaleString()}</span></p>
                     <div className="flex items-center gap-2">
+                      {isAllocationLocked && transferToChecking < 0 && (
+                        <button
+                          type="button"
+                          onClick={resetAllocation}
+                          className="rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+                        >
+                          Reset split
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={setOrUnlockAllocation}

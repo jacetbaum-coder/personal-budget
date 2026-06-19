@@ -3,6 +3,7 @@ import Card from '../components/Card'
 import Section from '../components/Section'
 import { useAppState } from '../state'
 import { isRecurringExpenseDue } from '../recurring'
+import { SAVINGS_BUFFER, CHECKING_BUFFER } from '../calculations'
 
 const payPeriodOptions = ['Weekly', 'Biweekly', 'Monthly'] as const
 const forecastHorizonOptions = [
@@ -166,6 +167,25 @@ export default function SettingsPage() {
   const unpaidCashAppTotal = unpaidDueExpenses
     .filter((expense) => expense.sourceAccount === 'cashApp')
     .reduce((sum, expense) => sum + expense.amount, 0)
+
+  // Live pool preview — same formula as PayPeriodsPage, using the entered balances
+  const previewSavings = Number.isFinite(Number(overrideDraftBalances['savings'])) ? Number(overrideDraftBalances['savings']) : 0
+  const previewChecking = Number.isFinite(Number(overrideDraftBalances['checking'])) ? Number(overrideDraftBalances['checking']) : 0
+  const overridePayAmount = selectedOverridePeriod?.payAmount ?? 0
+  const overrideRentTransfer = selectedOverridePeriod?.transfers.rent ?? 0
+  const overrideBaseOpenbankTransfer = selectedOverridePeriod?.transfers.openbank ?? 0
+  const previewBaseTransferToChecking =
+    previewSavings + overridePayAmount - overrideRentTransfer - overrideBaseOpenbankTransfer - unpaidSavingsTotal - SAVINGS_BUFFER
+  const previewPool =
+    previewChecking + previewBaseTransferToChecking - unpaidCheckingTotal - unpaidCashAppTotal - CHECKING_BUFFER
+  const forcedSpendingNum =
+    overrideForcedSpending.trim() !== '' && Number.isFinite(Number(overrideForcedSpending))
+      ? Math.max(0, Number(overrideForcedSpending))
+      : null
+  const previewSpending = forcedSpendingNum != null
+    ? forcedSpendingNum
+    : previewPool > 0 ? previewPool : 0
+  const previewExtraToOpenbank = previewPool > 0 ? Math.max(0, previewPool - previewSpending) : 0
 
   const startEdit = () => {
     setDraftPayPeriod(defaultPayPeriodLabel)
@@ -543,12 +563,35 @@ export default function SettingsPage() {
                       <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{overrideError}</p>
                     ) : null}
 
-                    <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                    <div className={`rounded-2xl border p-3 text-xs ${previewPool >= 0 ? 'border-slate-200 bg-white text-slate-600' : 'border-red-200 bg-red-50 text-red-800'}`}>
                       <p className="font-semibold text-slate-900">What happens next</p>
-                      <p className="mt-1">Starting balances for {selectedOverridePeriod?.label ?? 'selected period'} are set to your entered values.</p>
-                      <p className="mt-1">Will still be charged this period: ${unpaidDueExpenses.reduce((sum, expense) => sum + expense.amount, 0).toLocaleString()} (Savings ${unpaidSavingsTotal.toLocaleString()}, Checking ${unpaidCheckingTotal.toLocaleString()}, CashApp ${unpaidCashAppTotal.toLocaleString()}).</p>
-                      <p className="mt-1">Already paid (won't be charged again): ${paidDueExpenses.reduce((sum, expense) => sum + expense.amount, 0).toLocaleString()}.</p>
-                      <p className="mt-1">Spending target: {overrideForcedSpending.trim() === '' ? 'unchanged' : `$${Math.max(0, Number(overrideForcedSpending) || 0).toLocaleString()}` }.</p>
+
+                      <div className={`mt-2 flex items-center justify-between rounded-xl px-3 py-2 font-semibold ${previewPool >= 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                        <span>Remaining pool</span>
+                        <span>{previewPool >= 0 ? `$${previewPool.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : `−$${Math.abs(previewPool).toLocaleString(undefined, { maximumFractionDigits: 2 })} short`}</span>
+                      </div>
+
+                      {previewPool < 0 && (
+                        <p className="mt-2 font-semibold">⚠ These balances and unpaid bills leave you short. Reduce transfers, mark more bills as paid, or enter higher starting balances.</p>
+                      )}
+
+                      <div className="mt-2 space-y-1">
+                        <div className="flex justify-between"><span>Unpaid bills (from Savings)</span><span>−${unpaidSavingsTotal.toLocaleString()}</span></div>
+                        <div className="flex justify-between"><span>Unpaid bills (from Checking)</span><span>−${unpaidCheckingTotal.toLocaleString()}</span></div>
+                        {unpaidCashAppTotal > 0 && <div className="flex justify-between"><span>Unpaid CashApp loads</span><span>−${unpaidCashAppTotal.toLocaleString()}</span></div>}
+                        {paidDueExpenses.length > 0 && <div className="flex justify-between text-slate-400"><span>Already paid (skipped)</span><span>−${paidDueExpenses.reduce((s, e) => s + e.amount, 0).toLocaleString()}</span></div>}
+                        {paidDueExpenses.some((e) => e.sourceAccount === 'cashApp') && <div className="flex justify-between text-slate-400"><span>CashApp load (skip — already in CashApp)</span><span>$0</span></div>}
+                      </div>
+
+                      <div className="mt-2 border-t border-slate-200 pt-2 space-y-1">
+                        {previewPool >= 0 ? (
+                          <>
+                            <div className="flex justify-between"><span>Spending money</span><span className="font-semibold">${previewSpending.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+                            <div className="flex justify-between"><span>Extra → OpenBank</span><span className="font-semibold text-emerald-700">${previewExtraToOpenbank.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+                          </>
+                        ) : null}
+                        <p className="text-slate-500">{forcedSpendingNum != null ? `Spending locked to $${forcedSpendingNum.toLocaleString()}.` : 'Previous spending allocation will be cleared and recalculated from these balances.'}</p>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2">
