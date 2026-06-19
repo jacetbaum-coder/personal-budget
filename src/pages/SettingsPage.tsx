@@ -1,7 +1,8 @@
-import { ChangeEvent, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, useEffect, useMemo, useState } from 'react'
 import Card from '../components/Card'
 import Section from '../components/Section'
 import { useAppState } from '../state'
+import { isRecurringExpenseDue } from '../recurring'
 
 const payPeriodOptions = ['Weekly', 'Biweekly', 'Monthly'] as const
 const forecastHorizonOptions = [
@@ -99,6 +100,7 @@ export default function SettingsPage() {
   const {
     accounts,
     payPeriods,
+    recurringExpenses,
     selectedPayPeriodId,
     defaultPayPeriodLabel,
     defaultPaycheckAmount,
@@ -113,6 +115,7 @@ export default function SettingsPage() {
     setNotifications,
     applyMasterOverride,
     clearMasterOverrideRecord,
+    getExpenseSettlementStatus,
     masterOverrideRecord,
   } = useAppState()
 
@@ -126,14 +129,43 @@ export default function SettingsPage() {
   const [overridePayPeriodId, setOverridePayPeriodId] = useState<number>(selectedPayPeriodId)
   const [overrideReason, setOverrideReason] = useState('')
   const [overrideNotes, setOverrideNotes] = useState('')
+  const [overrideForcedSpending, setOverrideForcedSpending] = useState('')
   const [overrideConfirmChecked, setOverrideConfirmChecked] = useState(false)
   const [overrideError, setOverrideError] = useState<string | null>(null)
+  const [overrideExpensePaidById, setOverrideExpensePaidById] = useState<Record<number, boolean>>({})
   const [overrideDraftBalances, setOverrideDraftBalances] = useState<Record<string, string>>(() =>
     Object.fromEntries(accounts.map((account) => [account.id, String(account.balance)]))
   )
   const monthGrid = useMemo(() => buildMonthGrid(draftPayDate), [draftPayDate])
   const highlightedDates = useMemo(() => getPaydayHighlights(draftPayDate, draftPayPeriod), [draftPayDate, draftPayPeriod])
   const selectedOverridePeriod = payPeriods.find((period) => period.id === overridePayPeriodId) ?? payPeriods[0]
+  const overridePeriodIndex = Math.max(0, payPeriods.findIndex((period) => period.id === overridePayPeriodId))
+
+  const dueExpensesForOverride = useMemo(
+    () => recurringExpenses.filter((expense) => isRecurringExpenseDue(expense, overridePeriodIndex, payPeriods)),
+    [overridePeriodIndex, payPeriods, recurringExpenses]
+  )
+
+  useEffect(() => {
+    const next: Record<number, boolean> = {}
+    for (const expense of dueExpensesForOverride) {
+      next[expense.id] = getExpenseSettlementStatus(overridePayPeriodId, expense.id) === 'paidAlready'
+    }
+    setOverrideExpensePaidById(next)
+  }, [dueExpensesForOverride, getExpenseSettlementStatus, overridePayPeriodId])
+
+  const paidDueExpenses = dueExpensesForOverride.filter((expense) => overrideExpensePaidById[expense.id] === true)
+  const unpaidDueExpenses = dueExpensesForOverride.filter((expense) => !overrideExpensePaidById[expense.id])
+
+  const unpaidSavingsTotal = unpaidDueExpenses
+    .filter((expense) => expense.sourceAccount === 'savings')
+    .reduce((sum, expense) => sum + expense.amount, 0)
+  const unpaidCheckingTotal = unpaidDueExpenses
+    .filter((expense) => expense.sourceAccount === 'checking')
+    .reduce((sum, expense) => sum + expense.amount, 0)
+  const unpaidCashAppTotal = unpaidDueExpenses
+    .filter((expense) => expense.sourceAccount === 'cashApp')
+    .reduce((sum, expense) => sum + expense.amount, 0)
 
   const startEdit = () => {
     setDraftPayPeriod(defaultPayPeriodLabel)
@@ -184,9 +216,18 @@ export default function SettingsPage() {
       return
     }
 
+    if (overrideForcedSpending.trim() !== '' && !Number.isFinite(Number(overrideForcedSpending))) {
+      setOverrideError('Spending money must be a valid number.')
+      return
+    }
+
     const result = applyMasterOverride({
       payPeriodId: selectedOverridePeriod?.id ?? overridePayPeriodId,
       accountBalances: parsed,
+      paidExpenseIds: paidDueExpenses.map((expense) => expense.id),
+      unpaidExpenseIds: unpaidDueExpenses.map((expense) => expense.id),
+      forcedSpendingMoneyTarget:
+        overrideForcedSpending.trim() === '' ? undefined : Number(overrideForcedSpending),
       reason: overrideReason,
       notes: overrideNotes,
     })
@@ -428,6 +469,47 @@ export default function SettingsPage() {
                     </div>
 
                     <div>
+                      <label className="mb-1 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Spending money for this period</label>
+                      <input
+                        type="number"
+                        value={overrideForcedSpending}
+                        onChange={(event) => setOverrideForcedSpending(event.target.value)}
+                        placeholder="Leave blank to keep current"
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      />
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Due this period</p>
+                      <div className="mt-2 space-y-1.5">
+                        {dueExpensesForOverride.length === 0 ? (
+                          <p className="text-xs text-slate-500">No recurring bills due in this pay period.</p>
+                        ) : (
+                          dueExpensesForOverride.map((expense) => (
+                            <label key={expense.id} className="flex items-center justify-between gap-2 text-xs text-slate-700">
+                              <span className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={overrideExpensePaidById[expense.id] === true}
+                                  onChange={(event) =>
+                                    setOverrideExpensePaidById((current) => ({
+                                      ...current,
+                                      [expense.id]: event.target.checked,
+                                    }))
+                                  }
+                                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                                />
+                                <span>{expense.name} ({expense.sourceAccount})</span>
+                              </span>
+                              <span>${expense.amount.toLocaleString()}</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500">Checked = already paid, unchecked = still unpaid and will be charged this period.</p>
+                    </div>
+
+                    <div>
                       <label className="mb-1 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Reason (optional)</label>
                       <input
                         type="text"
@@ -461,6 +543,14 @@ export default function SettingsPage() {
                       <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{overrideError}</p>
                     ) : null}
 
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                      <p className="font-semibold text-slate-900">What happens next</p>
+                      <p className="mt-1">Starting balances for {selectedOverridePeriod?.label ?? 'selected period'} are set to your entered values.</p>
+                      <p className="mt-1">Will still be charged this period: ${unpaidDueExpenses.reduce((sum, expense) => sum + expense.amount, 0).toLocaleString()} (Savings ${unpaidSavingsTotal.toLocaleString()}, Checking ${unpaidCheckingTotal.toLocaleString()}, CashApp ${unpaidCashAppTotal.toLocaleString()}).</p>
+                      <p className="mt-1">Already paid (won't be charged again): ${paidDueExpenses.reduce((sum, expense) => sum + expense.amount, 0).toLocaleString()}.</p>
+                      <p className="mt-1">Spending target: {overrideForcedSpending.trim() === '' ? 'unchanged' : `$${Math.max(0, Number(overrideForcedSpending) || 0).toLocaleString()}` }.</p>
+                    </div>
+
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -488,6 +578,9 @@ export default function SettingsPage() {
                         <p className="font-semibold text-slate-900">Last override applied</p>
                         <p className="mt-1">Period: {payPeriods.find((period) => period.id === masterOverrideRecord.payPeriodId)?.label ?? masterOverrideRecord.payPeriodId}</p>
                         <p>Time: {formatSaveTime(masterOverrideRecord.appliedAt)}</p>
+                        <p>Paid already: {masterOverrideRecord.paidExpenseIds.length}</p>
+                        <p>Still unpaid: {masterOverrideRecord.unpaidExpenseIds.length}</p>
+                        <p>Spending target: {masterOverrideRecord.forcedSpendingMoneyTarget == null ? 'unchanged' : `$${masterOverrideRecord.forcedSpendingMoneyTarget.toLocaleString()}`}</p>
                         <button
                           type="button"
                           onClick={clearMasterOverrideRecord}

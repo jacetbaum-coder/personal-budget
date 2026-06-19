@@ -43,6 +43,7 @@ export default function DashboardPage() {
     payPeriods,
     recurringExpenses,
     selectedPayPeriodId,
+    getExpenseSettlementStatus,
     getRecurringTotals,
   } = useAppState()
 
@@ -104,8 +105,14 @@ export default function DashboardPage() {
     savingsExpensesTotal
 
   const dueSavingsExpenses = useMemo(
-    () => recurringExpenses.filter((e) => isRecurringExpenseDue(e, periodIndex, payPeriods) && e.sourceAccount === 'savings'),
-    [payPeriods, recurringExpenses, periodIndex]
+    () =>
+      recurringExpenses.filter(
+        (e) =>
+          isRecurringExpenseDue(e, periodIndex, payPeriods) &&
+          e.sourceAccount === 'savings' &&
+          getExpenseSettlementStatus(selectedPeriod.id, e.id) !== 'paidAlready'
+      ),
+    [getExpenseSettlementStatus, payPeriods, recurringExpenses, periodIndex, selectedPeriod.id]
   )
 
   const overage = Math.max(0, -remainingPool)

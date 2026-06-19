@@ -1,4 +1,4 @@
-import type { Account, MasterOverrideRecord, PayPeriod, RecurringExpense, TransactionRecord } from '../models'
+import type { Account, MasterOverrideRecord, PayPeriod, PeriodExpenseOverrides, RecurringExpense, TransactionRecord } from '../models'
 import { sampleAccounts, samplePayPeriods, sampleRecurringExpenses } from '../models'
 import { historicalTransactions, historicalPayPeriods } from '../data/historicalData'
 
@@ -14,6 +14,7 @@ export interface PersistedAppStateData {
   recurringExpenses: RecurringExpense[]
   transactions: TransactionRecord[]
   masterOverrideRecord: MasterOverrideRecord | null
+  periodExpenseOverrides: PeriodExpenseOverrides
   selectedPayPeriodId: number
   selectedForecastPointId: number
   extraMoney: number
@@ -38,7 +39,7 @@ const REMOTE_SYNC_ENABLED = import.meta.env.VITE_ENABLE_REMOTE_SYNC === 'true'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const SUPABASE_ROW_ID = import.meta.env.VITE_SUPABASE_APP_STATE_ROW_ID ?? 'default'
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 
 export function createDefaultPersistedState(): PersistedAppStateData {
   const allPayPeriods = [...historicalPayPeriods, ...samplePayPeriods]
@@ -49,6 +50,7 @@ export function createDefaultPersistedState(): PersistedAppStateData {
     recurringExpenses: sampleRecurringExpenses,
     transactions: historicalTransactions,
     masterOverrideRecord: null,
+    periodExpenseOverrides: {},
     selectedPayPeriodId: samplePayPeriods[0]?.id ?? 1,
     selectedForecastPointId: 4,
     extraMoney: 520,
@@ -89,13 +91,54 @@ function parseMasterOverrideRecord(value: unknown): MasterOverrideRecord | null 
 
   if (Object.keys(accountBalances).length === 0) return null
 
+  const paidExpenseIds = Array.isArray(value.paidExpenseIds)
+    ? value.paidExpenseIds.filter((id): id is number => typeof id === 'number')
+    : []
+  const unpaidExpenseIds = Array.isArray(value.unpaidExpenseIds)
+    ? value.unpaidExpenseIds.filter((id): id is number => typeof id === 'number')
+    : []
+
+  const forcedSpendingMoneyTarget =
+    typeof value.forcedSpendingMoneyTarget === 'number' && Number.isFinite(value.forcedSpendingMoneyTarget)
+      ? value.forcedSpendingMoneyTarget
+      : undefined
+
   return {
     payPeriodId: value.payPeriodId,
     accountBalances,
+    paidExpenseIds,
+    unpaidExpenseIds,
+    forcedSpendingMoneyTarget,
     reason: typeof value.reason === 'string' ? value.reason : undefined,
     notes: typeof value.notes === 'string' ? value.notes : undefined,
     appliedAt: value.appliedAt,
   }
+}
+
+function parsePeriodExpenseOverrides(value: unknown): PeriodExpenseOverrides {
+  if (!isObject(value)) return {}
+
+  const output: PeriodExpenseOverrides = {}
+
+  for (const [periodIdRaw, expenseMapRaw] of Object.entries(value)) {
+    const periodId = Number(periodIdRaw)
+    if (!Number.isFinite(periodId) || !isObject(expenseMapRaw)) continue
+
+    const parsedExpenseMap: Record<number, 'paidAlready' | 'unpaid'> = {}
+
+    for (const [expenseIdRaw, statusRaw] of Object.entries(expenseMapRaw)) {
+      const expenseId = Number(expenseIdRaw)
+      if (!Number.isFinite(expenseId)) continue
+      if (statusRaw !== 'paidAlready' && statusRaw !== 'unpaid') continue
+      parsedExpenseMap[expenseId] = statusRaw
+    }
+
+    if (Object.keys(parsedExpenseMap).length > 0) {
+      output[periodId] = parsedExpenseMap
+    }
+  }
+
+  return output
 }
 
 export function mergePersistedState(input: unknown): PersistedAppStateData {
@@ -109,6 +152,7 @@ export function mergePersistedState(input: unknown): PersistedAppStateData {
     recurringExpenses: Array.isArray(raw.recurringExpenses) ? (raw.recurringExpenses as RecurringExpense[]) : defaults.recurringExpenses,
     transactions: Array.isArray(raw.transactions) ? (raw.transactions as TransactionRecord[]) : defaults.transactions,
     masterOverrideRecord: parseMasterOverrideRecord(raw.masterOverrideRecord),
+    periodExpenseOverrides: parsePeriodExpenseOverrides(raw.periodExpenseOverrides),
     selectedPayPeriodId: typeof raw.selectedPayPeriodId === 'number' ? raw.selectedPayPeriodId : defaults.selectedPayPeriodId,
     selectedForecastPointId: typeof raw.selectedForecastPointId === 'number' ? raw.selectedForecastPointId : defaults.selectedForecastPointId,
     extraMoney: typeof raw.extraMoney === 'number' ? raw.extraMoney : defaults.extraMoney,

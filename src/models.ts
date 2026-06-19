@@ -144,10 +144,16 @@ export interface ForecastPoint {
 export interface MasterOverrideRecord {
   payPeriodId: number
   accountBalances: Record<AccountId, number>
+  paidExpenseIds: number[]
+  unpaidExpenseIds: number[]
+  forcedSpendingMoneyTarget?: number
   reason?: string
   notes?: string
   appliedAt: string
 }
+
+export type ExpenseSettlementStatus = 'paidAlready' | 'unpaid'
+export type PeriodExpenseOverrides = Record<number, Record<number, ExpenseSettlementStatus>>
 
 // ── Actual data ───────────────────────────────────────────────────────────────
 
