@@ -33,7 +33,7 @@ export default function TransactionHistoryPage() {
                       </div>
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Category</p>
-                        <p className="mt-1 text-sm text-slate-700">{transactionCategoryLabels[transaction.category]}</p>
+                        <p className="mt-1 text-sm text-slate-700">{transaction.customCategoryLabel ?? transactionCategoryLabels[transaction.category]}</p>
                       </div>
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Transfer</p>

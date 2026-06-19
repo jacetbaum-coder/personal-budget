@@ -109,6 +109,7 @@ export interface TransactionRecord {
   destination?: AccountId
   type: TransactionType
   category: TransactionCategory
+  customCategoryLabel?: string
   impact: 'reduced' | 'increased' | 'neutral'
 }
 

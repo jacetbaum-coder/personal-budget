@@ -29,10 +29,6 @@ export default function DashboardPage() {
     payPeriods,
     recurringExpenses,
     selectedPayPeriodId,
-    getProjectedLeftover,
-    getAvailableSpending,
-    getSafetyBuffer,
-    getCashAppTransfer,
     getRecurringTotals,
   } = useAppState()
 
@@ -51,21 +47,54 @@ export default function DashboardPage() {
   const selectedPeriod = payPeriods.find((p) => p.id === selectedPayPeriodId) ?? payPeriods[0]
   const periodIndex = payPeriods.findIndex((p) => p.id === selectedPeriod.id)
   const recurringTotals = getRecurringTotals(periodIndex)
-  const projectedLeftover = getProjectedLeftover(selectedPeriod, recurringTotals)
-  const cashAppTransfer = getCashAppTransfer(recurringTotals)
-  const safetyBuffer = getSafetyBuffer()
-  const availableSpending = getAvailableSpending(projectedLeftover)
+  const cashAppTransfer = recurringTotals.groceries + recurringTotals.bus
+
+  const defaultSavingsStart = accounts.find((a) => a.id === 'savings')?.balance ?? 0
+  const defaultCheckingStart = accounts.find((a) => a.id === 'checking')?.balance ?? 0
+  const startSavings = selectedPeriod.startingBalances?.savings ?? defaultSavingsStart
+  const startChecking = selectedPeriod.startingBalances?.checking ?? defaultCheckingStart
+
+  const savingsExpensesTotal = recurringTotals.fromSavings
+  const subscriptionTotal = recurringTotals.fromChecking
+
+  const baseTransferToCheckings =
+    startSavings +
+    selectedPeriod.payAmount -
+    selectedPeriod.transfers.rent -
+    selectedPeriod.transfers.openbank -
+    savingsExpensesTotal -
+    SAVINGS_BUFFER
+
+  const remainingPool =
+    startChecking +
+    baseTransferToCheckings -
+    subscriptionTotal -
+    cashAppTransfer -
+    CHECKING_BUFFER
+
+  const maxSpendingForPeriod = remainingPool > 0 ? remainingPool : 0
+  const savedSpendingChoice = selectedPeriod.spendingMoneyTarget
+  const availableSpending =
+    remainingPool > 0
+      ? Math.max(0, Math.min(maxSpendingForPeriod, savedSpendingChoice ?? maxSpendingForPeriod))
+      : remainingPool
+
+  const extraToOpenBank = remainingPool > 0 ? remainingPool - availableSpending : 0
+  const totalOpenBankTransfer = selectedPeriod.transfers.openbank + extraToOpenBank
+  const transferToCheckings = baseTransferToCheckings - extraToOpenBank
+  const projectedLeftover =
+    startSavings +
+    selectedPeriod.payAmount -
+    selectedPeriod.transfers.rent -
+    totalOpenBankTransfer -
+    savingsExpensesTotal
 
   const dueSavingsExpenses = useMemo(
     () => recurringExpenses.filter((e) => isRecurringExpenseDue(e, periodIndex, payPeriods) && e.sourceAccount === 'savings'),
     [payPeriods, recurringExpenses, periodIndex]
   )
 
-  const savingsExpensesTotal = recurringTotals.fromSavings
-  const subscriptionTotal = recurringTotals.fromChecking
-  const transferToCheckings = cashAppTransfer + subscriptionTotal + availableSpending
-  const outflows = selectedPeriod.transfers.rent + selectedPeriod.transfers.openbank + savingsExpensesTotal + transferToCheckings
-  const overage = Math.max(0, outflows - selectedPeriod.payAmount)
+  const overage = Math.max(0, -remainingPool)
   const negativeTransfer = transferToCheckings < 0
 
   // Sparkline
@@ -103,7 +132,7 @@ export default function DashboardPage() {
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Current period</p>
             <h2 className="mt-1 text-2xl font-semibold text-slate-950">{selectedPeriod.label}</h2>
-            <p className="mt-1 text-sm text-slate-500">${selectedPeriod.payAmount.toLocaleString()} incoming · ${availableSpending.toLocaleString()} available after buffer</p>
+            <p className="mt-1 text-sm text-slate-500">${selectedPeriod.payAmount.toLocaleString()} incoming · ${availableSpending.toLocaleString()} spending</p>
           </div>
           <div className={`inline-flex items-center rounded-full px-5 py-2.5 text-sm font-semibold ${isToday ? 'bg-emerald-600 text-white' : 'border border-slate-200 bg-white text-slate-900'}`}>
             {badge}
@@ -122,7 +151,7 @@ export default function DashboardPage() {
               Transfer ${selectedPeriod.transfers.rent.toLocaleString()} → BofA Rent Holdings.
             </CheckStep>
             <CheckStep n={3} done={doneSteps.has(3)} onToggle={() => toggleStep(3)}>
-              Transfer ${selectedPeriod.transfers.openbank.toLocaleString()} → OpenBank.
+              Transfer ${totalOpenBankTransfer.toLocaleString()} → OpenBank.
             </CheckStep>
             <CheckStep n={4} done={doneSteps.has(4)} onToggle={() => toggleStep(4)}>
               Pay savings expenses due this period:
@@ -140,7 +169,7 @@ export default function DashboardPage() {
             </CheckStep>
             <CheckStep n={5} done={doneSteps.has(5)} onToggle={() => toggleStep(5)}>
               Transfer ${transferToCheckings.toLocaleString()} → BofA Checkings.
-              <span className="ml-1 text-xs opacity-60">(subscriptions + available spending)</span>
+              <span className="ml-1 text-xs opacity-60">(includes your saved pool split)</span>
             </CheckStep>
             <CheckStep n={6} done={doneSteps.has(6)} onToggle={() => toggleStep(6)}>
               From Checkings, load ${cashAppTransfer.toLocaleString()} → CashApp.
@@ -161,8 +190,9 @@ export default function DashboardPage() {
           <Card title="Spending summary" subtitle={`${selectedPeriod.label} · ${selectedPeriod.payDate}`}>
             <div className="space-y-3">
               <SummaryRow label="Paycheck" value={`$${selectedPeriod.payAmount.toLocaleString()}`} />
+              <SummaryRow label="Starting (Savings + Checkings)" value={`$${(startSavings + startChecking).toLocaleString()}`} />
               <SummaryRow label="Rent transfer" value={`−$${selectedPeriod.transfers.rent.toLocaleString()}`} dim />
-              <SummaryRow label="OpenBank transfer" value={`−$${selectedPeriod.transfers.openbank.toLocaleString()}`} dim />
+              <SummaryRow label="OpenBank transfer" value={`−$${totalOpenBankTransfer.toLocaleString()}`} dim />
               <SummaryRow label="Savings expenses" value={`−$${savingsExpensesTotal.toLocaleString()}`} dim />
               <div className="my-1 border-t border-slate-100" />
               <SummaryRow label="Projected leftover" value={`$${projectedLeftover.toLocaleString()}`} bold />

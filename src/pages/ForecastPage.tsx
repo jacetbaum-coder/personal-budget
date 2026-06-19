@@ -1,100 +1,184 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Card from '../components/Card'
-import InfoRow from '../components/InfoRow'
 import Section from '../components/Section'
-import TimelineButton from '../components/TimelineButton'
+import Sparkline from '../components/Sparkline'
 import { useAppState } from '../state'
-import {
-  calculateAvailableSpending,
-  calculateCashAppTransfer,
-  calculateProjectedLeftover,
-  calculateSafetyBuffer
-} from '../calculations'
+import { CHECKING_BUFFER, SAVINGS_BUFFER } from '../calculations'
+
+type GraphMode = 'spending' | 'openbankBalance' | 'openbankPercent'
 
 export default function ForecastPage() {
   const {
     accounts,
     payPeriods,
-    forecastPoints,
-    selectedForecastPointId,
-    setSelectedForecastPointId,
+    selectedPayPeriodId,
     getRecurringTotals,
-    getProjectedLeftover,
-    getAvailableSpending,
-    getSafetyBuffer
   } = useAppState()
 
-  const selectedPoint = useMemo(
-    () => forecastPoints.find((point) => point.id === selectedForecastPointId) ?? forecastPoints[0],
-    [forecastPoints, selectedForecastPointId]
-  )
+  const [graphMode, setGraphMode] = useState<GraphMode>('spending')
 
-  const selectedPeriod = useMemo(
-    () => payPeriods.find((period) => period.id === selectedPoint.payPeriodId) ?? payPeriods[0],
-    [payPeriods, selectedPoint.payPeriodId]
-  )
+  const rows = useMemo(() => {
+    if (payPeriods.length === 0) return [] as Array<{
+      id: number
+      label: string
+      payDate: string
+      remainingPool: number
+      spendingMoney: number
+      extraToOpenbank: number
+      openbankPercent: number
+      openbankBalanceEnd: number
+    }>
 
-  const periodIndex = useMemo(
-    () => payPeriods.findIndex((period) => period.id === selectedPeriod.id),
-    [payPeriods, selectedPeriod.id]
-  )
+    const bal = (id: string) => accounts.find((a) => a.id === id)?.balance ?? 0
+    let prevEnd: Record<string, number> | null = null
 
-  const recurringTotals = useMemo(() => getRecurringTotals(periodIndex), [getRecurringTotals, periodIndex])
+    return payPeriods.map((period, idx) => {
+      const startSavings = period.startingBalances?.savings ?? (prevEnd?.savings ?? bal('savings'))
+      const startChecking = period.startingBalances?.checking ?? (prevEnd?.checking ?? bal('checking'))
+      const startRent = period.startingBalances?.rentFund ?? (prevEnd?.rentFund ?? bal('rentFund'))
+      const startCashApp = period.startingBalances?.cashApp ?? (prevEnd?.cashApp ?? bal('cashApp'))
+      const startOpenbank = period.startingBalances?.openbank ?? (prevEnd?.openbank ?? bal('openbank'))
 
-  const projectedLeftover = getProjectedLeftover(selectedPeriod, recurringTotals)
-  const cashAppTransfer = calculateCashAppTransfer(recurringTotals.groceries, recurringTotals.bus)
-  const safetyBuffer = getSafetyBuffer()
-  const availableSpending = getAvailableSpending(projectedLeftover)
+      const totals = getRecurringTotals(idx)
+      const cashAppLoad = totals.groceries + totals.bus
 
-  const adjustedBalances = useMemo(
-    () =>
-      accounts.map((account) => ({
-        ...account,
-        projectedBalance: account.balance + (selectedPoint.balanceAdjustments[account.id] ?? 0)
-      })),
-    [accounts, selectedPoint.balanceAdjustments]
-  )
+      const baseTransferToChecking =
+        startSavings +
+        period.payAmount -
+        period.transfers.rent -
+        period.transfers.openbank -
+        totals.fromSavings -
+        SAVINGS_BUFFER
+
+      const remainingPool =
+        startChecking +
+        baseTransferToChecking -
+        totals.fromChecking -
+        cashAppLoad -
+        CHECKING_BUFFER
+
+      const maxSpending = remainingPool > 0 ? remainingPool : 0
+      const spendingMoney =
+        remainingPool > 0
+          ? Math.max(0, Math.min(maxSpending, period.spendingMoneyTarget ?? maxSpending))
+          : remainingPool
+      const extraToOpenbank = remainingPool > 0 ? remainingPool - spendingMoney : 0
+      const openbankTransfer = period.transfers.openbank + extraToOpenbank
+      const openbankPercent = remainingPool > 0 ? (extraToOpenbank / remainingPool) * 100 : 0
+
+      const end = {
+        savings: SAVINGS_BUFFER,
+        checking: CHECKING_BUFFER + Math.max(0, spendingMoney),
+        rentFund: startRent + period.transfers.rent,
+        cashApp: startCashApp + cashAppLoad - totals.groceries - totals.bus,
+        openbank: startOpenbank + openbankTransfer,
+      }
+      prevEnd = end
+
+      return {
+        id: period.id,
+        label: period.label,
+        payDate: period.payDate,
+        remainingPool,
+        spendingMoney: Math.max(0, spendingMoney),
+        extraToOpenbank: Math.max(0, extraToOpenbank),
+        openbankPercent,
+        openbankBalanceEnd: end.openbank,
+      }
+    })
+  }, [accounts, getRecurringTotals, payPeriods])
+
+  const selectedRow = rows.find((row) => row.id === selectedPayPeriodId) ?? rows[0]
+
+  const positiveRows = rows.filter((row) => row.remainingPool > 0)
+  const avgPool = positiveRows.length > 0 ? positiveRows.reduce((sum, row) => sum + row.remainingPool, 0) / positiveRows.length : 0
+  const lastPct = positiveRows.length > 0 ? positiveRows[positiveRows.length - 1]?.openbankPercent ?? 0 : 0
+  const estNextOpenbankExtra = (avgPool * lastPct) / 100
+  const estAnnualOpenbankExtra = estNextOpenbankExtra * 26
+
+  const labels = rows.map((row) => row.label)
+  const spendingSeries = rows.map((row) => row.spendingMoney)
+  const openbankBalanceSeries = rows.map((row) => row.openbankBalanceEnd)
+  const openbankPctSeries = rows.map((row) => Number(row.openbankPercent.toFixed(1)))
+
+  const graphData =
+    graphMode === 'spending'
+      ? spendingSeries
+      : graphMode === 'openbankBalance'
+        ? openbankBalanceSeries
+        : openbankPctSeries
+
+  const graphTitle =
+    graphMode === 'spending'
+      ? 'Spending money by pay period'
+      : graphMode === 'openbankBalance'
+        ? 'OpenBank balance trend'
+        : 'OpenBank share of pool (%)'
+
+  if (payPeriods.length === 0) {
+    return (
+      <div className="space-y-6">
+        <Section title="Forecast" description="No pay periods yet.">
+          <Card title="No forecast data">
+            <p className="text-sm text-slate-600">Add at least one pay period to see forecast graphs.</p>
+          </Card>
+        </Section>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      <Section title="Forecast" description="What will my finances look like on this future date?">
-        <Card title="Future date selector" subtitle="Pick a date to preview projected balances.">
-          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap">
-            {forecastPoints.map((point) => (
-              <TimelineButton
-                key={point.id}
-                label={point.dateLabel}
-                active={point.id === selectedForecastPointId}
-                onClick={() => setSelectedForecastPointId(point.id)}
-              />
-            ))}
+      <Section title="Forecast" description="Visualize spending and OpenBank growth trends.">
+        <Card title="Trend graphs" subtitle="Pick a graph view.">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">Based on your pay-period settings and saved pool split.</p>
+            <select
+              value={graphMode}
+              onChange={(e) => setGraphMode(e.target.value as GraphMode)}
+              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs"
+            >
+              <option value="spending">Spending money</option>
+              <option value="openbankBalance">OpenBank balance</option>
+              <option value="openbankPercent">OpenBank share %</option>
+            </select>
+          </div>
+          <p className="mb-2 text-sm font-semibold text-slate-900">{graphTitle}</p>
+          <div className="h-24 w-full">
+            <Sparkline data={graphData} labels={labels} color={graphMode === 'openbankPercent' ? '#0f766e' : '#0f172a'} height={76} />
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3 text-xs">
+            <div className="rounded-xl bg-slate-50 p-3">
+              <p className="text-slate-500">Current period</p>
+              <p className="mt-1 font-semibold text-slate-900">{selectedRow?.label ?? 'n/a'}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3">
+              <p className="text-slate-500">Spending now</p>
+              <p className="mt-1 font-semibold text-slate-900">${(selectedRow?.spendingMoney ?? 0).toLocaleString()}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-3">
+              <p className="text-slate-500">OpenBank now</p>
+              <p className="mt-1 font-semibold text-slate-900">${(selectedRow?.openbankBalanceEnd ?? 0).toLocaleString()}</p>
+            </div>
           </div>
         </Card>
 
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <Card title="Projected balances" subtitle={`Forecast for ${selectedPoint.dateLabel}`}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {adjustedBalances.map((account) => (
-                <InfoRow
-                  key={account.id}
-                  label={account.name}
-                  value={`$${account.projectedBalance.toLocaleString()}`}
-                />
-              ))}
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Card title="Current split" subtitle="Saved allocation on selected pay period.">
+            <div className="space-y-3 text-sm text-slate-700">
+              <div className="flex items-center justify-between"><span>Pool</span><span className="font-semibold text-slate-900">${(selectedRow?.remainingPool ?? 0).toLocaleString()}</span></div>
+              <div className="flex items-center justify-between"><span>Spending money</span><span className="font-semibold text-slate-900">${(selectedRow?.spendingMoney ?? 0).toLocaleString()}</span></div>
+              <div className="flex items-center justify-between"><span>Extra to OpenBank</span><span className="font-semibold text-slate-900">${(selectedRow?.extraToOpenbank ?? 0).toLocaleString()}</span></div>
+              <div className="flex items-center justify-between"><span>OpenBank share</span><span className="font-semibold text-slate-900">{(selectedRow?.openbankPercent ?? 0).toFixed(1)}%</span></div>
             </div>
           </Card>
 
-          <Card title="Forecast summary" subtitle="Projected account position and spending headroom.">
-            <div className="space-y-4">
-              <InfoRow label="Pay period" value={selectedPeriod.label} />
-              <InfoRow label="Projected Leftover" value={`$${projectedLeftover.toLocaleString()}`} />
-              <InfoRow
-                label="Safety Buffer"
-                value={`$${safetyBuffer.toLocaleString()}`}
-                note={`${Math.round((safetyBuffer / Math.max(projectedLeftover, 1)) * 100)}% of leftover`}
-              />
-              <InfoRow label="Available Spending" value={`$${availableSpending.toLocaleString()}`} />
-              <InfoRow label="CashApp transfer" value={`$${cashAppTransfer.toLocaleString()}`} note="Estimated groceries + bus" />
+          <Card title="If trend continues" subtitle="Uses your latest OpenBank share % over average pool size.">
+            <div className="space-y-3 text-sm text-slate-700">
+              <div className="flex items-center justify-between"><span>Latest OpenBank share</span><span className="font-semibold text-slate-900">{lastPct.toFixed(1)}%</span></div>
+              <div className="flex items-center justify-between"><span>Average pool</span><span className="font-semibold text-slate-900">${avgPool.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+              <div className="flex items-center justify-between"><span>Estimated extra OpenBank next paycheck</span><span className="font-semibold text-slate-900">${estNextOpenbankExtra.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+              <div className="flex items-center justify-between"><span>Estimated extra OpenBank yearly (26 paychecks)</span><span className="font-semibold text-slate-900">${estAnnualOpenbankExtra.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
             </div>
           </Card>
         </div>
