@@ -43,50 +43,49 @@ export default function Sparkline({ data, color = '#0f172a', height = 44, labels
   }
 
   return (
-    <svg
-      ref={ref}
-      viewBox={`0 0 100 ${h}`}
-      preserveAspectRatio="none"
-      className="w-full h-11"
-      onMouseMove={handleMove}
-      onMouseLeave={handleLeave}
-    >
-      <defs>
-        <linearGradient id={`g-${id}`} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
+    <div className="relative h-11 w-full">
+      <svg
+        ref={ref}
+        viewBox={`0 0 100 ${h}`}
+        preserveAspectRatio="none"
+        className="h-11 w-full"
+        onMouseMove={handleMove}
+        onMouseLeave={handleLeave}
+      >
+        <defs>
+          <linearGradient id={`g-${id}`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
 
-      <polygon points={areaPoints} fill={`url(#g-${id})`} />
+        <polygon points={areaPoints} fill={`url(#g-${id})`} />
 
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth={2.5}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        style={{ transition: 'stroke-width 160ms ease' }}
-      />
-
-      {/* markers */}
-      {coords.map((p, i) => (
-        <circle
-          key={i}
-          cx={`${p.x}%`}
-          cy={p.y}
-          r={i === hoverIndex ? 3.5 : 2}
-          fill={i === hoverIndex ? '#fff' : color}
-          stroke={i === hoverIndex ? color : 'none'}
-          strokeWidth={1}
-          opacity={i === hoverIndex ? 1 : 0.9}
+        <polyline
+          points={points}
+          fill="none"
+          stroke={color}
+          strokeWidth={2.5}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          style={{ transition: 'stroke-width 160ms ease' }}
         />
-      ))}
 
-      {/* hover tooltip */}
-      {hoverIndex !== null && coords[hoverIndex] && (
-        <g>
+        {/* markers */}
+        {coords.map((p, i) => (
+          <circle
+            key={i}
+            cx={`${p.x}%`}
+            cy={p.y}
+            r={i === hoverIndex ? 3.5 : 2}
+            fill={i === hoverIndex ? '#fff' : color}
+            stroke={i === hoverIndex ? color : 'none'}
+            strokeWidth={1}
+            opacity={i === hoverIndex ? 1 : 0.9}
+          />
+        ))}
+
+        {hoverIndex !== null && coords[hoverIndex] && (
           <line
             x1={`${coords[hoverIndex].x}%`}
             x2={`${coords[hoverIndex].x}%`}
@@ -96,28 +95,17 @@ export default function Sparkline({ data, color = '#0f172a', height = 44, labels
             strokeWidth={0.5}
             opacity={0.12}
           />
+        )}
+      </svg>
 
-          <rect
-            x={`${coords[hoverIndex].x}%`}
-            y={Math.max(2, coords[hoverIndex].y - 22)}
-            width={50}
-            height={18}
-            transform={`translate(-25,0)`}
-            rx={6}
-            fill="#0f172a"
-            opacity={0.9}
-          />
-          <text
-            x={`${coords[hoverIndex].x}%`}
-            y={coords[hoverIndex].y - 8}
-            textAnchor="middle"
-            fontSize={9}
-            fill="#fff"
-          >
-            {labels?.[hoverIndex] ?? coords[hoverIndex].v.toFixed(0)}
-          </text>
-        </g>
+      {hoverIndex !== null && coords[hoverIndex] && (
+        <div
+          className="pointer-events-none absolute -top-5 -translate-x-1/2 rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-white shadow"
+          style={{ left: `${coords[hoverIndex].x}%` }}
+        >
+          {labels?.[hoverIndex] ?? coords[hoverIndex].v.toFixed(0)}
+        </div>
       )}
-    </svg>
+    </div>
   )
 }
