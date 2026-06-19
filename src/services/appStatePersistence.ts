@@ -1,5 +1,6 @@
 import type { Account, PayPeriod, RecurringExpense, TransactionRecord } from '../models'
 import { sampleAccounts, samplePayPeriods, sampleRecurringExpenses } from '../models'
+import { historicalTransactions, historicalPayPeriods } from '../data/historicalData'
 
 export interface PersistedNotifications {
   email: boolean
@@ -39,12 +40,13 @@ const SUPABASE_ROW_ID = import.meta.env.VITE_SUPABASE_APP_STATE_ROW_ID ?? 'defau
 const SCHEMA_VERSION = 1
 
 export function createDefaultPersistedState(): PersistedAppStateData {
+  const allPayPeriods = [...historicalPayPeriods, ...samplePayPeriods]
   return {
     schemaVersion: SCHEMA_VERSION,
     accounts: sampleAccounts,
-    payPeriods: samplePayPeriods,
+    payPeriods: allPayPeriods,
     recurringExpenses: sampleRecurringExpenses,
-    transactions: [],
+    transactions: historicalTransactions,
     selectedPayPeriodId: samplePayPeriods[0]?.id ?? 1,
     selectedForecastPointId: 4,
     extraMoney: 520,

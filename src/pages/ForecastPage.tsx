@@ -129,7 +129,10 @@ export default function ForecastPage() {
 
   return (
     <div className="space-y-6">
-      <Section title="Forecast" description="Visualize spending and OpenBank growth trends.">
+      <Section title="Forecast" description="Visualize spending and OpenBank growth trends from Oct 2025 onward.">
+        <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 p-3">
+          <p className="text-xs text-amber-700">📊 <strong>Historical Context Included:</strong> Graph shows pay periods from Oct 2025 (pre-teaching job) through present, including the paycheck increase and rent transition.</p>
+        </div>
         <Card title="Trend graphs" subtitle="Pick a graph view.">
           <div className="mb-4 flex items-center justify-between gap-3">
             <p className="text-xs text-slate-500">Based on your pay-period settings and saved pool split.</p>
